@@ -50,6 +50,7 @@ pkgs.mkShell {
       pkg-config
       pkgconf
       zlib
+      surfer
     ])
     ++ preCommitCheck.enabledPackages;
 }
