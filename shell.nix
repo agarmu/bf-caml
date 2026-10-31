@@ -40,6 +40,7 @@ pkgs.mkShell {
     (with ocamlPackages; [
       ocaml
       dune_3
+      ocaml-lsp
       ocamlformat
       utop
     ])
