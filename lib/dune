@@ -1,4 +1,7 @@
 (include_subdirs unqualified)
 
 (library
- (name bf_caml))
+ (name bf_caml)
+ (libraries hardcaml)
+ (preprocess
+  (pps ppx_hardcaml)))
