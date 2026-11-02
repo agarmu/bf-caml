@@ -26,6 +26,7 @@ depends: [
   "int_repr" {= "v0.17.0"}
   "jane-street-headers" {= "v0.17.0"}
   "jst-config" {= "v0.17.0"}
+  "linenoise" {= "1.5.1"}
   "num" {= "1.6"}
   "ocaml" {= "5.5.1"}
   "ocaml-compiler-libs" {= "v0.17.0"}

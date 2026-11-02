@@ -8,4 +8,5 @@
  (depends
   (ocaml (and (>= 5.0) (< 6)))
   (hardcaml (= v0.17.1))
-  (ppx_hardcaml (= v0.17.1))))
+  (ppx_hardcaml (= v0.17.1))
+  linenoise))
