@@ -56,6 +56,8 @@ let create (inputs : _ Input.t) =
         program_size = loader.program_size;
         start;
         step = inputs.step;
+        jump = gnd;
+        jump_address = zero 8;
       }
   in
   (* The fetched opcode executes on the same edge that advances the program. *)

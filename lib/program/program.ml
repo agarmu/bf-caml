@@ -15,6 +15,8 @@ module Input = struct
     program_size : 'a; [@bits 8]
     start : 'a;
     step : 'a;
+    jump : 'a;
+    jump_address : 'a; [@bits 8]
   }
   [@@deriving hardcaml]
 end
@@ -43,13 +45,17 @@ let create (inputs : _ Input.t) =
       ~read_address:pc
   in
   let advance = inputs.step &: running &: ~:(inputs.load) in
-  (* The final step clears [running] and leaves [pc] on the last opcode. *)
+  (* A jump to [program_size] halts; otherwise the final sequential step halts. *)
   let last = pc ==: inputs.program_size -:. 1 in
+  let continue =
+    mux2 inputs.jump (inputs.jump_address <: inputs.program_size) ~:last
+  in
+  let next_pc = mux2 inputs.jump inputs.jump_address (pc +:. 1) in
   pc
   <== reg spec
-        ~enable:(inputs.start |: (advance &: ~:last))
-        (mux2 inputs.start (zero 8) (pc +:. 1));
+        ~enable:(inputs.start |: (advance &: continue))
+        (mux2 inputs.start (zero 8) next_pc);
   running
   <== reg spec ~enable:(inputs.start |: advance)
-        (mux2 inputs.start (inputs.program_size <>:. 0) ~:last);
+        (mux2 inputs.start (inputs.program_size <>:. 0) continue);
   { Output.pc; opcode; halted = ~:running }
