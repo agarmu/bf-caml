@@ -24,6 +24,7 @@ let create (inputs : _ Input.t) =
   let should_decr =
     inputs.enable &: Instruction.matches inputs.opcode Instruction.Decrement
   in
+  let change = uresize should_incr 8 -: uresize should_decr 8 in
   let cell =
     (* On each clock edge, we:
        - go to 0 if `reset` is high
@@ -31,7 +32,7 @@ let create (inputs : _ Input.t) =
        - otherwise, keep the same value
     *)
     reg_fb spec ~enable:(should_incr |: should_decr) ~width:8 ~f:(fun value ->
-        mux2 should_incr (value +:. 1) (value -:. 1))
+        value +: change)
   in
   (* expose the register value as the cell output *)
   { Output.cell }
