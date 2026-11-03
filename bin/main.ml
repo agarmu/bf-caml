@@ -1,7 +1,7 @@
 open Hardcaml
-module Cell = Bf_caml.Cell
+module Tape = Bf_caml.Tape
 module Instruction = Bf_caml.Instruction
-module Simulator = Cyclesim.With_interface (Cell.Input) (Cell.Output)
+module Simulator = Cyclesim.With_interface (Tape.Input) (Tape.Output)
 
 let repl handle =
   let interactive = Unix.isatty (Unix.descr_of_in_channel stdin) in
@@ -22,14 +22,26 @@ let repl handle =
 let run_sim (sim : Simulator.t) =
   let inputs = Cyclesim.inputs sim in
   let outputs = Cyclesim.outputs sim in
-  let cell () = Bits.to_int !(outputs.cell) in
+  let show () =
+    let cells = !(outputs.cells) in
+    let values =
+      List.init Tape.cell_count (fun index ->
+          let low = index * 8 in
+          Bits.select cells (low + 7) low |> Bits.to_int |> string_of_int)
+    in
+    Printf.sprintf "pointer = %d\ncells = [%s]"
+      (Bits.to_int !(outputs.pointer))
+      (String.concat "," values)
+  in
 
   inputs.reset := Bits.vdd;
   inputs.enable := Bits.gnd;
   inputs.opcode := Instruction.to_bits Instruction.Increment;
+  inputs.pointer_load := Bits.gnd;
+  inputs.pointer_next := Bits.of_int ~width:4 0;
   Cyclesim.cycle sim;
   inputs.reset := Bits.gnd;
-  Printf.printf "cell=%d\n%!" (cell ());
+  Printf.printf "%s\n%!" (show ());
 
   let execute opcode =
     inputs.opcode := Instruction.to_bits opcode;
@@ -43,7 +55,7 @@ let run_sim (sim : Simulator.t) =
       inputs.enable := Bits.gnd;
       (* VCD samples before each edge, so this cycle captures the last result. *)
       Cyclesim.cycle sim;
-      Printf.sprintf "cell=%d" (cell ()))
+      show ())
 
 let run sim path =
   let channel = open_out path in
@@ -54,7 +66,7 @@ let run sim path =
 
 let () =
   match Sys.argv with
-  | [| _; path |] -> run (Simulator.create Cell.create) path
+  | [| _; path |] -> run (Simulator.create Tape.create) path
   | _ ->
       prerr_endline "usage: bf_caml FILE";
       exit 2
