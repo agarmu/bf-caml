@@ -84,10 +84,8 @@ let run_sim (sim : Simulator.t) =
         Cyclesim.cycle sim;
         inputs.step := Bits.vdd;
         while not (Bits.to_bool !(outputs.halted)) do
-          if
-            Bits.to_char !(outputs.opcode)
-            = Instruction.to_char Instruction.Input
-          then inputs.input_byte := read_input_byte ();
+          if Bits.to_bool !(outputs.input_needed) then
+            inputs.input_byte := read_input_byte ();
           Cyclesim.cycle sim;
           if Bits.to_bool !(outputs.output_valid) then
             Printf.printf "output = %S\n%!"
@@ -96,7 +94,9 @@ let run_sim (sim : Simulator.t) =
         inputs.step := Bits.gnd;
         (* Capture the final state in the VCD after the last instruction. *)
         Cyclesim.cycle sim;
-        show ()))
+        if Bits.to_bool !(outputs.invalid_program) then
+          "error: unmatched brackets"
+        else show ()))
 
 let run sim path =
   let channel = open_out path in
