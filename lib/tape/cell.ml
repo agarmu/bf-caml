@@ -21,13 +21,17 @@ let create (inputs : _ Input.t) =
   let should_incr =
     inputs.enable &: Instruction.matches inputs.opcode Instruction.Increment
   in
+  let should_decr =
+    inputs.enable &: Instruction.matches inputs.opcode Instruction.Decrement
+  in
   let cell =
     (* On each clock edge, we:
        - go to 0 if `reset` is high
-       - increment if `should_incr` is high
+       - increment or decrement for the corresponding opcode
        - otherwise, keep the same value
     *)
-    reg_fb spec ~enable:should_incr ~width:8 ~f:(fun value -> value +:. 1)
+    reg_fb spec ~enable:(should_incr |: should_decr) ~width:8 ~f:(fun value ->
+        mux2 should_incr (value +:. 1) (value -:. 1))
   in
   (* expose the register value as the cell output *)
   { Output.cell }
