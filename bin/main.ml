@@ -1,7 +1,8 @@
 open Hardcaml
+module Cpu = Bf_caml.Cpu
 module Tape = Bf_caml.Tape
 module Instruction = Bf_caml.Instruction
-module Simulator = Cyclesim.With_interface (Tape.Input) (Tape.Output)
+module Simulator = Cyclesim.With_interface (Cpu.Input) (Cpu.Output)
 
 let repl handle =
   let interactive = Unix.isatty (Unix.descr_of_in_channel stdin) in
@@ -29,17 +30,19 @@ let run_sim (sim : Simulator.t) =
           let low = index * 8 in
           Bits.select cells (low + 7) low |> Bits.to_int |> string_of_int)
     in
-    Printf.sprintf "pointer = %d\ncells = [%s]"
+    Printf.sprintf "pc = %d\npointer = %d\ncells = [%s]"
+      (Bits.to_int !(outputs.pc))
       (Bits.to_int !(outputs.pointer))
       (String.concat "," values)
   in
 
   inputs.reset := Bits.vdd;
-  inputs.enable := Bits.gnd;
-  inputs.opcode := Instruction.to_bits Instruction.Increment;
+  inputs.new_program := Bits.gnd;
+  inputs.byte_valid := Bits.gnd;
+  inputs.byte := Bits.of_char '\000';
+  inputs.finish := Bits.gnd;
+  inputs.step := Bits.gnd;
   inputs.input_byte := Bits.of_int ~width:8 0;
-  inputs.pointer_load := Bits.gnd;
-  inputs.pointer_next := Bits.of_int ~width:4 0;
   Cyclesim.cycle sim;
   inputs.reset := Bits.gnd;
   Printf.printf "%s\n%!" (show ());
@@ -54,23 +57,46 @@ let run_sim (sim : Simulator.t) =
     in
     Bits.of_char (Option.value byte ~default:'\000')
   in
-  let execute opcode =
-    if opcode = Instruction.Input then inputs.input_byte := read_input_byte ();
-    inputs.opcode := Instruction.to_bits opcode;
-    Cyclesim.cycle sim;
-    if Bits.to_bool !(outputs.output_valid) then
-      Printf.printf "output = %S\n%!"
-        (String.make 1 (Bits.to_char !(outputs.cell)))
-  in
   repl (fun line ->
-      inputs.enable := Bits.vdd;
-      String.iter
-        (fun character -> Option.iter execute (Instruction.of_char character))
-        line;
-      inputs.enable := Bits.gnd;
-      (* VCD samples before each edge, so this cycle captures the last result. *)
-      Cyclesim.cycle sim;
-      show ())
+      let opcode_count =
+        String.fold_left
+          (fun count character ->
+            if Option.is_some (Instruction.of_char character) then count + 1
+            else count)
+          0 line
+      in
+      if opcode_count > Bf_caml.Program.capacity then
+        "error: program exceeds 255 instructions"
+      else (
+        inputs.new_program := Bits.vdd;
+        Cyclesim.cycle sim;
+        inputs.new_program := Bits.gnd;
+        inputs.byte_valid := Bits.vdd;
+        String.iter
+          (fun character ->
+            inputs.byte := Bits.of_char character;
+            Cyclesim.cycle sim)
+          line;
+        inputs.byte_valid := Bits.gnd;
+        inputs.finish := Bits.vdd;
+        Cyclesim.cycle sim;
+        inputs.finish := Bits.gnd;
+        Cyclesim.cycle sim;
+        inputs.step := Bits.vdd;
+        while not (Bits.to_bool !(outputs.halted)) do
+          if
+            Bits.to_char !(outputs.opcode)
+            = Instruction.to_char Instruction.Input
+          then inputs.input_byte := read_input_byte ();
+          Cyclesim.cycle sim;
+          if Bits.to_bool !(outputs.output_valid) then
+            Printf.printf "output = %S\n%!"
+              (String.make 1 (Bits.to_char !(outputs.output_byte)))
+        done;
+        inputs.step := Bits.gnd;
+        (* Capture the final state in the VCD after the last instruction. *)
+        Cyclesim.cycle sim;
+        show ()))
 
 let run sim path =
   let channel = open_out path in
@@ -81,7 +107,7 @@ let run sim path =
 
 let () =
   match Sys.argv with
-  | [| _; path |] -> run (Simulator.create Tape.create) path
+  | [| _; path |] -> run (Simulator.create Cpu.create) path
   | _ ->
       prerr_endline "usage: bf_caml FILE";
       exit 2
