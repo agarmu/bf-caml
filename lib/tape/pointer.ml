@@ -30,7 +30,6 @@ let create (inputs : _ Input.t) =
   (* Loading an address takes priority over a move on the same clock edge. *)
   let address =
     reg_fb spec ~enable:update ~width:4 ~f:(fun current ->
-        mux2 inputs.load inputs.next_address
-          (current +: movement))
+        mux2 inputs.load inputs.next_address (current +: movement))
   in
   { Output.address }

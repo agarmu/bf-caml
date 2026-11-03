@@ -3,7 +3,13 @@ open Signal
 
 (* wires entering the cell*)
 module Input = struct
-  type 'a t = { clock : 'a; reset : 'a; enable : 'a; opcode : 'a [@bits 8] }
+  type 'a t = {
+    clock : 'a;
+    reset : 'a;
+    enable : 'a;
+    opcode : 'a; [@bits 8]
+    input_byte : 'a; [@bits 8]
+  }
   [@@deriving hardcaml]
 end
 
@@ -24,15 +30,20 @@ let create (inputs : _ Input.t) =
   let should_decr =
     inputs.enable &: Instruction.matches inputs.opcode Instruction.Decrement
   in
+  let should_input =
+    inputs.enable &: Instruction.matches inputs.opcode Instruction.Input
+  in
   let change = uresize should_incr 8 -: uresize should_decr 8 in
   let cell =
     (* On each clock edge, we:
        - go to 0 if `reset` is high
-       - increment or decrement for the corresponding opcode
+       - increment, decrement, or replace the value for the corresponding opcode
        - otherwise, keep the same value
     *)
-    reg_fb spec ~enable:(should_incr |: should_decr) ~width:8 ~f:(fun value ->
-        value +: change)
+    reg_fb spec
+      ~enable:(should_incr |: should_decr |: should_input)
+      ~width:8
+      ~f:(fun value -> mux2 should_input inputs.input_byte (value +: change))
   in
   (* expose the register value as the cell output *)
   { Output.cell }

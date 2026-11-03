@@ -9,6 +9,7 @@ module Input = struct
     reset : 'a;
     enable : 'a;
     opcode : 'a; [@bits 8]
+    input_byte : 'a; [@bits 8]
     pointer_load : 'a;
     pointer_next : 'a; [@bits 4]
   }
@@ -20,6 +21,7 @@ module Output = struct
     pointer : 'a; [@bits 4]
     cell : 'a; [@bits 8]
     cells : 'a; [@bits 128]
+    output_valid : 'a;
   }
   [@@deriving hardcaml]
 end
@@ -47,6 +49,7 @@ let create (inputs : _ Input.t) =
              reset = inputs.reset;
              enable = inputs.enable &: selected;
              opcode = inputs.opcode;
+             input_byte = inputs.input_byte;
            })
           .cell)
   in
@@ -54,4 +57,7 @@ let create (inputs : _ Input.t) =
     Output.pointer = pointer.address;
     cell = mux pointer.address cells;
     cells = concat_lsb cells;
+    output_valid =
+      inputs.enable &: ~:(inputs.reset)
+      &: Instruction.matches inputs.opcode Instruction.Output;
   }

@@ -37,15 +37,30 @@ let run_sim (sim : Simulator.t) =
   inputs.reset := Bits.vdd;
   inputs.enable := Bits.gnd;
   inputs.opcode := Instruction.to_bits Instruction.Increment;
+  inputs.input_byte := Bits.of_int ~width:8 0;
   inputs.pointer_load := Bits.gnd;
   inputs.pointer_next := Bits.of_int ~width:4 0;
   Cyclesim.cycle sim;
   inputs.reset := Bits.gnd;
   Printf.printf "%s\n%!" (show ());
 
+  let read_input_byte () =
+    let byte =
+      if Unix.isatty (Unix.descr_of_in_channel stdin) then
+        match LNoise.linenoise "input> " with
+        | Some line when line <> "" -> Some line.[0]
+        | _ -> None
+      else In_channel.input_char stdin
+    in
+    Bits.of_char (Option.value byte ~default:'\000')
+  in
   let execute opcode =
+    if opcode = Instruction.Input then inputs.input_byte := read_input_byte ();
     inputs.opcode := Instruction.to_bits opcode;
-    Cyclesim.cycle sim
+    Cyclesim.cycle sim;
+    if Bits.to_bool !(outputs.output_valid) then
+      Printf.printf "output = %S\n%!"
+        (String.make 1 (Bits.to_char !(outputs.cell)))
   in
   repl (fun line ->
       inputs.enable := Bits.vdd;
