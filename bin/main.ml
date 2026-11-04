@@ -50,6 +50,8 @@ let run_sim (sim : Simulator.t) =
   inputs.finish := Bits.gnd;
   inputs.step := Bits.gnd;
   inputs.input_byte := Bits.of_int ~width:8 0;
+  inputs.input_ready := Bits.gnd;
+  inputs.output_ready := Bits.vdd;
   Cyclesim.cycle sim;
   inputs.reset := Bits.gnd;
   Printf.printf "%s\n%!" (show ());
@@ -91,14 +93,21 @@ let run_sim (sim : Simulator.t) =
         Cyclesim.cycle sim;
         inputs.step := Bits.vdd;
         while not (Bits.to_bool !(outputs.halted)) do
-          if Bits.to_bool !(outputs.input_needed) then
-            inputs.input_byte := read_input_byte ();
+          let needs_input = Bits.to_bool !(outputs.input_needed) in
+          if needs_input then inputs.input_byte := read_input_byte ();
+          inputs.input_ready := Bits.of_bool needs_input;
+          let output =
+            if Bits.to_bool !(outputs.output_valid) then
+              Some (Bits.to_char !(outputs.output_byte))
+            else None
+          in
           Cyclesim.cycle sim;
-          if Bits.to_bool !(outputs.output_valid) then
-            Printf.printf "output = %S\n%!"
-              (String.make 1 (Bits.to_char !(outputs.output_byte)))
+          Option.iter
+            (fun byte -> Printf.printf "output = %S\n%!" (String.make 1 byte))
+            output
         done;
         inputs.step := Bits.gnd;
+        inputs.input_ready := Bits.gnd;
         (* Capture the final state in the VCD after the last instruction. *)
         Cyclesim.cycle sim;
         if Bits.to_bool !(outputs.invalid_program) then

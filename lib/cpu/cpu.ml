@@ -21,6 +21,8 @@ module Make (C : Config.S) = struct
       finish : 'a;
       step : 'a;
       input_byte : 'a; [@bits 8]
+      input_ready : 'a;
+      output_ready : 'a;
     }
     [@@deriving hardcaml]
   end
@@ -42,7 +44,6 @@ module Make (C : Config.S) = struct
 
   let create (inputs : _ Input.t) =
     let program_reset = inputs.reset |: inputs.new_program in
-    let spec = Reg_spec.create ~clock:inputs.clock ~clear:program_reset () in
     let loader =
       Loader.create
         {
@@ -85,9 +86,15 @@ module Make (C : Config.S) = struct
           opcode = program.opcode;
         }
     in
+    let run_step =
+      inputs.step &: brackets.executing &: ~:(program.halted) &: ~:program_reset
+    in
+    let is_input = Instruction.matches program.opcode Instruction.Input in
+    let is_output = Instruction.matches program.opcode Instruction.Output in
     execute_step
-    <== (inputs.step &: brackets.executing &: ~:(program.halted)
-       &: ~:program_reset);
+    <== (run_step
+        &: (~:is_input |: inputs.input_ready)
+        &: (~:is_output |: inputs.output_ready));
     let tape =
       Tape.create
         {
@@ -115,10 +122,8 @@ module Make (C : Config.S) = struct
       pointer = tape.pointer;
       cells = tape.cells;
       invalid_program = brackets.invalid_program;
-      input_needed =
-        execute_step &: Instruction.matches program.opcode Instruction.Input;
-      output_valid = reg spec tape.output_valid;
-      (* [.] leaves the selected cell unchanged across the clock edge. *)
+      input_needed = run_step &: is_input;
+      output_valid = run_step &: is_output;
       output_byte = tape.cell;
     }
 end
