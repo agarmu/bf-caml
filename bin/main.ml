@@ -1,6 +1,13 @@
 open Hardcaml
-module Cpu = Bf_caml.Cpu
-module Tape = Bf_caml.Tape
+
+module Config = Bf_caml.Config.Make (struct
+  let max_program_size = 256
+  let tape_length = 16
+end)
+
+module Cpu = Bf_caml.Cpu.Make (Config)
+module Tape = Bf_caml.Tape.Make (Config)
+module Program = Bf_caml.Program.Make (Config)
 module Instruction = Bf_caml.Instruction
 module Simulator = Cyclesim.With_interface (Cpu.Input) (Cpu.Output)
 
@@ -65,8 +72,8 @@ let run_sim (sim : Simulator.t) =
             else count)
           0 line
       in
-      if opcode_count > Bf_caml.Program.capacity then
-        "error: program exceeds 255 instructions"
+      if opcode_count > Program.capacity then
+        Printf.sprintf "error: program exceeds %d instructions" Program.capacity
       else (
         inputs.new_program := Bits.vdd;
         Cyclesim.cycle sim;
