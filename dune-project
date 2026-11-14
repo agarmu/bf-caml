@@ -8,5 +8,7 @@
  (depends
   (ocaml (and (>= 5.0) (< 6)))
   (hardcaml (= v0.17.1))
+  (hardcaml_circuits (= v0.17.0))
   (ppx_hardcaml (= v0.17.1))
+  (ppx_jane (= v0.17.0))
   linenoise))
