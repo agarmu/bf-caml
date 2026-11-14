@@ -1,9 +1,24 @@
 open Hardcaml
 open Signal
 
+module State = struct
+  type t = Waiting_for_program | Scanning | Ready | Invalid_program
+  [@@deriving compare, enumerate, sexp_of]
+end
+
 module Make (C : Config.S) = struct
   let program_bits = C.program_bits
   let capacity = Config.entries program_bits - 1
+
+  module Address = struct
+    type 'a t = { address : 'a [@bits program_bits] } [@@deriving hardcaml]
+  end
+
+  module Stack = Hardcaml_circuits.Stack.Make (struct
+    module M = Address
+
+    let capacity = capacity
+  end)
 
   module Input = struct
     type 'a t = {
@@ -22,81 +37,68 @@ module Make (C : Config.S) = struct
       match_address : 'a; [@bits program_bits]
       start : 'a;
       scan : 'a;
-      executing : 'a;
+      ready : 'a;
       invalid_program : 'a;
     }
     [@@deriving hardcaml]
   end
 
+  let jump_table ~clock ~write_enable ~opening ~closing ~address =
+    let write_port write_address write_data =
+      {
+        Write_port.write_clock = clock;
+        write_enable;
+        write_address;
+        write_data;
+      }
+    in
+    (multiport_memory capacity
+       ~write_ports:[| write_port opening closing; write_port closing opening |]
+       ~read_addresses:[| address |]).(0)
+
   let create (inputs : _ Input.t) =
     let spec = Reg_spec.create ~clock:inputs.clock ~clear:inputs.reset () in
-    (* Scan after loading, then execute only if the brackets balance. *)
-    let phase = wire 2 in
-    let loading = phase ==:. 0 in
-    let scanning = phase ==:. 1 in
-    let executing = phase ==:. 2 in
-    let invalid_program = phase ==:. 3 in
-    let load_complete =
-      loading &: inputs.load_finished
-      &: ~:(reg spec inputs.load_finished)
-      &: ~:(inputs.reset)
+    let state = Always.State_machine.create (module State) spec in
+    let start_scan =
+      state.is Waiting_for_program &: inputs.load_finished &: ~:(inputs.reset)
     in
-    let scan = scanning &: ~:(inputs.program_halted) &: ~:(inputs.reset) in
-    let scan_complete = scanning &: inputs.program_halted &: ~:(inputs.reset) in
-    let stack_depth = wire program_bits in
-    let opening = Instruction.matches inputs.opcode Instruction.Loop_start in
-    let closing = Instruction.matches inputs.opcode Instruction.Loop_end in
-    let push = scan &: opening in
-    let pop = scan &: closing &: (stack_depth <>:. 0) in
-    let unmatched_close = scan &: closing &: (stack_depth ==:. 0) in
-    let matching_open =
-      memory capacity
-        ~write_port:
-          {
-            Write_port.write_clock = inputs.clock;
-            write_enable = push;
-            write_address = stack_depth;
-            write_data = inputs.pc;
-          }
-        ~read_address:
-          (mux2 (stack_depth ==:. 0) (zero program_bits) (stack_depth -:. 1))
+    let scanning = state.is Scanning &: ~:(inputs.reset) in
+    let scan = scanning &: ~:(inputs.program_halted) in
+    let scan_complete = scanning &: inputs.program_halted in
+    let pop = scan &: Instruction.matches inputs.opcode Instruction.Loop_end in
+    let stack =
+      Stack.create (Scope.create ())
+        {
+          Stack.I.clock = inputs.clock;
+          clear = inputs.reset;
+          wr_data = { Address.address = inputs.pc };
+          push =
+            scan &: Instruction.matches inputs.opcode Instruction.Loop_start;
+          pop;
+        }
     in
-    stack_depth
-    <== reg spec
-          (stack_depth +: uresize push program_bits -: uresize pop program_bits);
-    (* Each closing bracket records both directions of the jump. *)
+    let previous_pc = reg spec inputs.pc in
     let match_address =
-      (multiport_memory capacity
-         ~write_ports:
-           [|
-             {
-               Write_port.write_clock = inputs.clock;
-               write_enable = pop;
-               write_address = matching_open;
-               write_data = inputs.pc;
-             };
-             {
-               Write_port.write_clock = inputs.clock;
-               write_enable = pop;
-               write_address = inputs.pc;
-               write_data = matching_open;
-             };
-           |]
-         ~read_addresses:[| inputs.pc |]).(0)
+      jump_table ~clock:inputs.clock
+        ~write_enable:(stack.q.valid &: ~:(inputs.reset))
+        ~opening:stack.q.value.address ~closing:previous_pc ~address:inputs.pc
     in
-    let invalid = reg_fb spec ~width:1 ~f:(fun bad -> bad |: unmatched_close) in
-    let bad_brackets = invalid |: (stack_depth <>:. 0) in
-    let start_execution = scan_complete &: ~:bad_brackets in
-    phase
-    <== reg spec
-          ~enable:(load_complete |: scan_complete)
-          (mux2 load_complete (of_int ~width:2 1)
-             (mux2 bad_brackets (of_int ~width:2 3) (of_int ~width:2 2)));
+    let scan_valid = scan_complete &: stack.empty in
+    let scan_invalid =
+      pop &: stack.empty |: (scan_complete &: ~:(stack.empty))
+    in
+    Always.(
+      compile
+        [
+          when_ start_scan [ state.set_next Scanning ];
+          when_ scan_valid [ state.set_next Ready ];
+          when_ scan_invalid [ state.set_next Invalid_program ];
+        ]);
     {
       Output.match_address;
-      start = load_complete |: start_execution;
+      start = start_scan |: scan_valid;
       scan;
-      executing;
-      invalid_program;
+      ready = state.is Ready;
+      invalid_program = state.is Invalid_program;
     }
 end

@@ -100,7 +100,7 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
         }
     in
     let run_step =
-      inputs.step &: brackets.executing &: ~:(program.halted) &: ~:program_reset
+      inputs.step &: brackets.ready &: ~:(program.halted) &: ~:program_reset
       &: tape.ready
     in
     execute_step
@@ -118,7 +118,7 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
     {
       Output.pc = program.pc;
       opcode = program.opcode;
-      halted = brackets.executing &: program.halted |: brackets.invalid_program;
+      halted = brackets.ready &: program.halted |: brackets.invalid_program;
       pointer = tape.pointer;
       cell = tape.cell;
       invalid_program = brackets.invalid_program;
