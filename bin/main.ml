@@ -5,7 +5,8 @@ module Config = Bf_caml.Config.Make (struct
   let tape_length = 16
 end)
 
-module Cpu = Bf_caml.Cpu.Make (Config)
+module Memory = Bf_caml.Ram_memory.Make (Config)
+module Cpu = Bf_caml.Cpu.Make_with_memory (Config) (Memory)
 module Program = Bf_caml.Program.Make (Config)
 module Instruction = Bf_caml.Instruction
 module Simulator = Cyclesim.With_interface (Cpu.Input) (Cpu.Output)

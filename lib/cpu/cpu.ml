@@ -85,9 +85,6 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
           opcode = program.opcode;
         }
     in
-    let run_step =
-      inputs.step &: brackets.executing &: ~:(program.halted) &: ~:program_reset
-    in
     let is_input = Instruction.matches program.opcode Instruction.Input in
     let is_output = Instruction.matches program.opcode Instruction.Output in
     let tape =
@@ -102,9 +99,12 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
           pointer_next = zero pointer_bits;
         }
     in
-    let ready_step = run_step &: tape.ready in
+    let run_step =
+      inputs.step &: brackets.executing &: ~:(program.halted) &: ~:program_reset
+      &: tape.ready
+    in
     execute_step
-    <== (ready_step
+    <== (run_step
         &: (~:is_input |: inputs.input_ready)
         &: (~:is_output |: inputs.output_ready));
     start <== brackets.start;
@@ -122,8 +122,8 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
       pointer = tape.pointer;
       cell = tape.cell;
       invalid_program = brackets.invalid_program;
-      input_needed = ready_step &: is_input;
-      output_valid = ready_step &: is_output;
+      input_needed = run_step &: is_input;
+      output_valid = run_step &: is_output;
       output_byte = tape.cell;
     }
 end
