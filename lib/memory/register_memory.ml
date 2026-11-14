@@ -11,5 +11,5 @@ module Make (C : Config.S) : Memory.S = struct
           let selected = address ==: of_int ~width:address_bits index in
           reg spec ~enable:(write_enable &: selected) write_data)
     in
-    mux address cells
+    { Memory.data = mux address cells; ready = ~:reset }
 end
