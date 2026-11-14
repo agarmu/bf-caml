@@ -83,7 +83,9 @@ let () =
           prerr_endline message;
           exit 1
       in
-      run_sim (Simulator.create Cpu.create) source
+      Out_channel.with_open_bin "cell.vcd" (fun channel ->
+          let sim = Vcd.wrap channel (Simulator.create Cpu.create) in
+          run_sim sim source)
   | _ ->
       prerr_endline "usage: bf_caml PROGRAM.bf";
       exit 2
