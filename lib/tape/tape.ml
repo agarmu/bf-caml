@@ -1,9 +1,12 @@
 open Hardcaml
 open Signal
 
-module Make (C : Config.S) = struct
+module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
   let pointer_bits = C.pointer_bits
-  let cell_count = Config.entries pointer_bits
+
+  let () =
+    if Memory.address_bits <> pointer_bits then
+      invalid_arg "tape and memory address widths must match"
 
   module Input = struct
     type 'a t = {
@@ -22,7 +25,6 @@ module Make (C : Config.S) = struct
     type 'a t = {
       pointer : 'a; [@bits pointer_bits]
       cell : 'a; [@bits 8]
-      cells : 'a; [@bits cell_count * 8]
       output_valid : 'a;
     }
     [@@deriving hardcaml]
@@ -43,25 +45,26 @@ module Make (C : Config.S) = struct
           next_address = inputs.pointer_next;
         }
     in
-    let cells =
-      List.init cell_count (fun index ->
-          let selected = pointer.address ==: of_int ~width:pointer_bits index in
-          (Cell.create
-             {
-               Cell.Input.clock = inputs.clock;
-               reset = inputs.reset;
-               enable = inputs.enable &: selected;
-               opcode = inputs.opcode;
-               input_byte = inputs.input_byte;
-             })
-            .cell)
+    let cell = wire 8 in
+    let increment = Instruction.matches inputs.opcode Instruction.Increment in
+    let decrement = Instruction.matches inputs.opcode Instruction.Decrement in
+    let input = Instruction.matches inputs.opcode Instruction.Input in
+    let write_data =
+      mux2 input inputs.input_byte
+        (cell +: uresize increment 8 -: uresize decrement 8)
     in
+    cell
+    <== Memory.create ~clock:inputs.clock ~reset:inputs.reset
+          ~address:pointer.address
+          ~write_enable:(inputs.enable &: (increment |: decrement |: input))
+          ~write_data;
     {
       Output.pointer = pointer.address;
-      cell = mux pointer.address cells;
-      cells = concat_lsb cells;
+      cell;
       output_valid =
         inputs.enable &: ~:(inputs.reset)
         &: Instruction.matches inputs.opcode Instruction.Output;
     }
 end
+
+module Make (C : Config.S) = Make_with_memory (C) (Register_memory.Make (C))

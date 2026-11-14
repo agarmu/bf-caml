@@ -1,15 +1,14 @@
 open Hardcaml
 open Signal
 
-module Make (C : Config.S) = struct
+module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
   module Loader = Loader.Make (C)
   module Program = Program.Make (C)
   module Brackets = Brackets.Make (C)
-  module Tape = Tape.Make (C)
+  module Tape = Tape.Make_with_memory (C) (Memory)
 
   let program_bits = C.program_bits
   let pointer_bits = C.pointer_bits
-  let cell_count = Config.entries pointer_bits
 
   module Input = struct
     type 'a t = {
@@ -33,7 +32,7 @@ module Make (C : Config.S) = struct
       opcode : 'a; [@bits 8]
       halted : 'a;
       pointer : 'a; [@bits pointer_bits]
-      cells : 'a; [@bits cell_count * 8]
+      cell : 'a; [@bits 8]
       invalid_program : 'a;
       input_needed : 'a;
       output_valid : 'a;
@@ -120,10 +119,12 @@ module Make (C : Config.S) = struct
       opcode = program.opcode;
       halted = brackets.executing &: program.halted |: brackets.invalid_program;
       pointer = tape.pointer;
-      cells = tape.cells;
+      cell = tape.cell;
       invalid_program = brackets.invalid_program;
       input_needed = run_step &: is_input;
       output_valid = run_step &: is_output;
       output_byte = tape.cell;
     }
 end
+
+module Make (C : Config.S) = Make_with_memory (C) (Register_memory.Make (C))
