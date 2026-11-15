@@ -31,8 +31,8 @@ module Loaded (C : Config.S) (Memory : Memory.S) : S = struct
     let loader = Loader.create ~clock ~reset inputs in
     let read ~address =
       Memory.create ~address_bits:C.program_bits ~clear:gnd ~clock ~reset
-        ~address:(mux2 loader.load loader.load_address address)
-        ~write_enable:loader.load ~write_data:loader.load_opcode
+        ~address:(mux2 loader.load loader.program_size address)
+        ~write_enable:loader.load ~write_data:inputs.byte
     in
     {
       load = loader.load;

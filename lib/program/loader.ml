@@ -17,8 +17,6 @@ module Make (C : Config.S) = struct
   module Output = struct
     type 'a t = {
       load : 'a;
-      load_address : 'a; [@bits program_bits]
-      load_opcode : 'a; [@bits 8]
       program_size : 'a; [@bits program_bits]
       finished : 'a;
     }
@@ -48,11 +46,5 @@ module Make (C : Config.S) = struct
             (inputs.finish |: (load &: (program_size.value ==:. capacity - 1)))
             [ state.set_next Finished ];
         ]);
-    {
-      Output.load;
-      load_address = program_size.value;
-      load_opcode = inputs.byte;
-      program_size = program_size.value;
-      finished;
-    }
+    { Output.load; program_size = program_size.value; finished }
 end
