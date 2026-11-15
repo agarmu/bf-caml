@@ -53,11 +53,9 @@ struct
     let jump = wire 1 in
     let jump_address = wire program_bits in
     let program =
-      Program.create ~read:source.read
+      Program.create ~clock:inputs.clock ~reset:program_reset ~read:source.read
         {
-          Program.Input.clock = inputs.clock;
-          reset = program_reset;
-          load = source.load;
+          Program.Input.load = source.load;
           program_size = source.program_size;
           start;
           step;
@@ -66,11 +64,9 @@ struct
         }
     in
     let brackets =
-      Brackets.create
+      Brackets.create ~clock:inputs.clock ~reset:program_reset
         {
-          Brackets.Input.clock = inputs.clock;
-          reset = program_reset;
-          load_finished = source.finished;
+          Brackets.Input.load_finished = source.finished;
           program_halted = program.halted;
           program_ready = program.ready;
           pc = program.pc;
@@ -92,11 +88,9 @@ struct
     let is_input = Instruction.matches opcode Instruction.Input in
     let is_output = Instruction.matches opcode Instruction.Output in
     let tape =
-      Tape.create
+      Tape.create ~clock:inputs.clock ~reset:inputs.reset
         {
-          Tape.Input.clock = inputs.clock;
-          reset = inputs.reset;
-          enable = execute_step;
+          Tape.Input.enable = execute_step;
           opcode;
           input_byte = inputs.input_byte;
           pointer_load = gnd;

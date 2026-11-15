@@ -22,8 +22,6 @@ module Make (C : Config.S) = struct
 
   module Input = struct
     type 'a t = {
-      clock : 'a;
-      reset : 'a;
       load_finished : 'a;
       program_halted : 'a;
       program_ready : 'a;
@@ -57,21 +55,21 @@ module Make (C : Config.S) = struct
        ~write_ports:[| write_port opening closing; write_port closing opening |]
        ~read_addresses:[| address |]).(0)
 
-  let create (inputs : _ Input.t) =
-    let spec = Reg_spec.create ~clock:inputs.clock ~clear:inputs.reset () in
+  let create ~clock ~reset (inputs : _ Input.t) =
+    let spec = Reg_spec.create ~clock ~clear:reset () in
     let state = Always.State_machine.create (module State) spec in
     let start_scan =
-      state.is Waiting_for_program &: inputs.load_finished &: ~:(inputs.reset)
+      state.is Waiting_for_program &: inputs.load_finished &: ~:reset
     in
-    let scanning = state.is Scanning &: ~:(inputs.reset) in
+    let scanning = state.is Scanning &: ~:reset in
     let scan = scanning &: inputs.program_ready &: ~:(inputs.program_halted) in
     let scan_complete = scanning &: inputs.program_halted in
     let pop = scan &: Instruction.matches inputs.opcode Instruction.Loop_end in
     let stack =
       Stack.create (Scope.create ())
         {
-          Stack.I.clock = inputs.clock;
-          clear = inputs.reset;
+          Stack.I.clock;
+          clear = reset;
           wr_data = { Address.address = inputs.pc };
           push =
             scan &: Instruction.matches inputs.opcode Instruction.Loop_start;
@@ -80,8 +78,7 @@ module Make (C : Config.S) = struct
     in
     let previous_pc = reg spec inputs.pc in
     let match_address =
-      jump_table ~clock:inputs.clock
-        ~write_enable:(stack.q.valid &: ~:(inputs.reset))
+      jump_table ~clock ~write_enable:(stack.q.valid &: ~:reset)
         ~opening:stack.q.value.address ~closing:previous_pc ~address:inputs.pc
     in
     let scan_valid = scan_complete &: stack.empty in

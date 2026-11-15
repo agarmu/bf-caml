@@ -13,8 +13,6 @@ module Make (C : Config.S) = struct
    [start] begins a run; [step] advances the counter. *)
   module Input = struct
     type 'a t = {
-      clock : 'a;
-      reset : 'a;
       load : 'a;
       program_size : 'a; [@bits program_bits]
       start : 'a;
@@ -35,8 +33,8 @@ module Make (C : Config.S) = struct
     [@@deriving hardcaml]
   end
 
-  let create ~(read : Memory.read) (inputs : _ Input.t) =
-    let spec = Reg_spec.create ~clock:inputs.clock ~clear:inputs.reset () in
+  let create ~clock ~reset ~(read : Memory.read) (inputs : _ Input.t) =
+    let spec = Reg_spec.create ~clock ~clear:reset () in
     let state = Always.State_machine.create (module State) spec in
     let pc = Always.Variable.reg spec ~width:program_bits in
     let memory = read ~address:pc.value in

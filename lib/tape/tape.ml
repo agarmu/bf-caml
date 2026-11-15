@@ -6,8 +6,6 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
 
   module Input = struct
     type 'a t = {
-      clock : 'a;
-      reset : 'a;
       enable : 'a;
       opcode : 'a; [@bits 8]
       input_byte : 'a; [@bits 8]
@@ -27,7 +25,7 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
     [@@deriving hardcaml]
   end
 
-  let create (inputs : _ Input.t) =
+  let create ~clock ~reset (inputs : _ Input.t) =
     (* Cell writes use the current pointer. A pointer load takes effect after the
      same clock edge, so simultaneous load and write target the old address. *)
     let ready = wire 1 in
@@ -36,8 +34,8 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
       let module Pointer = Pointer.Make (C) in
       Pointer.create
         {
-          Pointer.Input.clock = inputs.clock;
-          reset = inputs.reset;
+          Pointer.Input.clock;
+          reset;
           enable;
           opcode = inputs.opcode;
           load = inputs.pointer_load;
@@ -53,8 +51,8 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
         (cell +: uresize increment 8 -: uresize decrement 8)
     in
     let memory =
-      Memory.create ~address_bits:pointer_bits ~clear:inputs.reset
-        ~clock:inputs.clock ~reset:inputs.reset ~address:pointer.address
+      Memory.create ~address_bits:pointer_bits ~clear:reset ~clock ~reset
+        ~address:pointer.address
         ~write_enable:(enable &: (increment |: decrement |: input))
         ~write_data
     in
@@ -65,7 +63,7 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
       cell;
       ready;
       output_valid =
-        enable &: ~:(inputs.reset)
+        enable &: ~:reset
         &: Instruction.matches inputs.opcode Instruction.Output;
     }
 end
