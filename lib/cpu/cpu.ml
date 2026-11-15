@@ -33,7 +33,7 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
       opcode : 'a; [@bits 8]
       halted : 'a;
       pointer : 'a; [@bits pointer_bits]
-      cell : 'a; [@bits 8]
+      current_cell : 'a; [@bits 8]
       invalid_program : 'a;
       input_needed : 'a;
       output_valid : 'a;
@@ -159,7 +159,7 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
       opcode = mux2 instruction.valid opcode program.opcode;
       halted = brackets.ready &: program.halted |: brackets.invalid_program;
       pointer = tape.pointer;
-      cell = tape.cell;
+      current_cell = tape.cell;
       invalid_program = brackets.invalid_program;
       input_needed = run_step &: is_input;
       output_valid = run_step &: is_output;
