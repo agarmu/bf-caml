@@ -6,6 +6,7 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
   module Program = Program.Make (C)
   module Brackets = Brackets.Make (C)
   module Tape = Tape.Make_with_memory (C) (Memory)
+  module Pipeline = Instruction_pipeline.Make (C)
 
   let program_bits = C.program_bits
   let pointer_bits = C.pointer_bits
@@ -85,46 +86,60 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
           opcode = program.opcode;
         }
     in
-    let is_input = Instruction.matches program.opcode Instruction.Input in
-    let is_output = Instruction.matches program.opcode Instruction.Output in
+    let running =
+      inputs.step &: brackets.ready &: ~:(program.halted) &: ~:program_reset
+    in
+    let cell = wire 8 in
+    let cell_ready = wire 1 in
+    let execution_ready = wire 1 in
+    let instruction =
+      Pipeline.create ~clock:inputs.clock ~reset:program_reset ~enable:running
+        ~pc:program.pc ~opcode:program.opcode ~cell ~cell_ready
+        ~ready:execution_ready
+    in
+    let opcode = instruction.value.opcode in
+    let is_input = Instruction.matches opcode Instruction.Input in
+    let is_output = Instruction.matches opcode Instruction.Output in
     let tape =
       Tape.create
         {
           Tape.Input.clock = inputs.clock;
           reset = inputs.reset;
           enable = execute_step;
-          opcode = program.opcode;
+          opcode;
           input_byte = inputs.input_byte;
           pointer_load = gnd;
           pointer_next = zero pointer_bits;
         }
     in
-    let run_step =
-      inputs.step &: brackets.ready &: ~:(program.halted) &: ~:program_reset
-      &: tape.ready
-    in
-    execute_step
-    <== (run_step
+    cell <== tape.cell;
+    cell_ready <== tape.ready;
+    let run_step = running &: instruction.valid in
+    execution_ready
+    <== (running
         &: (~:is_input |: inputs.input_ready)
         &: (~:is_output |: inputs.output_ready));
+    execute_step <== (instruction.valid &: execution_ready);
     start <== brackets.start;
     step <== (brackets.scan |: execute_step);
-    let opening = Instruction.matches program.opcode Instruction.Loop_start in
-    let closing = Instruction.matches program.opcode Instruction.Loop_end in
+    let opening = Instruction.matches opcode Instruction.Loop_start in
+    let closing = Instruction.matches opcode Instruction.Loop_end in
     jump
     <== (execute_step
-        &: (opening &: (tape.cell ==:. 0) |: (closing &: (tape.cell <>:. 0))));
+        &: (opening
+           &: (instruction.value.cell ==:. 0)
+           |: (closing &: (instruction.value.cell <>:. 0))));
     jump_address <== brackets.match_address +:. 1;
     {
-      Output.pc = program.pc;
-      opcode = program.opcode;
+      Output.pc = mux2 instruction.valid instruction.value.pc program.pc;
+      opcode = mux2 instruction.valid opcode program.opcode;
       halted = brackets.ready &: program.halted |: brackets.invalid_program;
       pointer = tape.pointer;
       cell = tape.cell;
       invalid_program = brackets.invalid_program;
       input_needed = run_step &: is_input;
       output_valid = run_step &: is_output;
-      output_byte = tape.cell;
+      output_byte = instruction.value.cell;
     }
 end
 
