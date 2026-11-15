@@ -7,7 +7,7 @@ module Simulation = Bf_caml.Simulation.Make (Config) (Bf_caml.Ram_memory)
 
 let () =
   match Sys.argv with
-  | [| _; path |] -> (
+  | [| _; path |] | [| _; "--rom"; path |] -> (
       let source =
         try In_channel.with_open_bin path In_channel.input_all
         with Sys_error message ->
@@ -20,6 +20,7 @@ let () =
       in
       match
         Simulation.run ~vcd_path:"cell.vcd"
+          ~rom:(Array.length Sys.argv = 3)
           ~read:(fun () -> In_channel.input_char stdin)
           ~write source
       with
@@ -31,5 +32,5 @@ let () =
           prerr_endline "error: unmatched brackets";
           exit 1)
   | _ ->
-      prerr_endline "usage: bf_caml PROGRAM.bf";
+      prerr_endline "usage: bf_caml [--rom] PROGRAM.bf";
       exit 2

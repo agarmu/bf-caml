@@ -1,6 +1,7 @@
 open Hardcaml
 
 type output = { data : Signal.t; ready : Signal.t }
+type read = address:Signal.t -> output
 
 module type S = sig
   val create :

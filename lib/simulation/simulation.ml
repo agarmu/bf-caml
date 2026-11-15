@@ -4,7 +4,7 @@ type error = Program_too_large of int | Unmatched_brackets
 
 module Make (C : Config.S) (Memory : Memory.S) = struct
   module Cpu = Cpu.Make_with_memory (C) (Memory)
-  module Program = Program.Make (C) (Memory)
+  module Program = Program.Make (C)
   module Sim = Cyclesim.With_interface (Cpu.Input) (Cpu.Output)
 
   let parse source =
@@ -52,12 +52,15 @@ module Make (C : Config.S) (Memory : Memory.S) = struct
     if Bits.to_bool !(o.invalid_program) then Error Unmatched_brackets
     else Ok ()
 
-  let run ?vcd_path ~read ~write source =
+  let run ?vcd_path ?(rom = false) ~read ~write source =
     let program = parse source in
     if List.length program > Program.capacity then
       Error (Program_too_large Program.capacity)
     else
-      let sim = Sim.create Cpu.create in
+      let sim =
+        Sim.create (Cpu.create ?rom:(if rom then Some program else None))
+      in
+      let program = if rom then [] else program in
       match vcd_path with
       | None -> execute sim ~read ~write program
       | Some path ->

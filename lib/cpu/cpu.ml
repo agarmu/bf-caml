@@ -3,7 +3,7 @@ open Signal
 
 module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
   module Loader = Loader.Make (C)
-  module Program = Program.Make (C) (Memory)
+  module Program = Program.Make (C)
   module Brackets = Brackets.Make (C)
   module Tape = Tape.Make_with_memory (C) (Memory)
   module Pipeline = Instruction_pipeline.Make (C)
@@ -42,7 +42,28 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
     [@@deriving hardcaml]
   end
 
-  let create (inputs : _ Input.t) =
+  let preloaded rom =
+    if List.length rom > Program.capacity then
+      invalid_arg "program too large for ROM";
+    {
+      Loader.Output.load = gnd;
+      load_address = zero program_bits;
+      load_opcode = zero 8;
+      program_size = of_int ~width:program_bits (List.length rom);
+      finished = vdd;
+    }
+
+  let program_memory ~clock ~reset (loader : _ Loader.Output.t) = function
+    | Some rom ->
+        Rom.create
+          ~contents:(List.map (fun op -> of_char (Instruction.to_char op)) rom)
+    | None ->
+        fun ~address ->
+          Memory.create ~address_bits:program_bits ~clear:gnd ~clock ~reset
+            ~address:(mux2 loader.load loader.load_address address)
+            ~write_enable:loader.load ~write_data:loader.load_opcode
+
+  let create ?rom (inputs : _ Input.t) =
     let program_reset = inputs.reset |: inputs.new_program in
     let loader =
       Loader.create
@@ -54,6 +75,10 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
           finish = inputs.finish;
         }
     in
+    let loader = Option.fold rom ~none:loader ~some:preloaded in
+    let read =
+      program_memory ~clock:inputs.clock ~reset:program_reset loader rom
+    in
     (* Connect these after Program exposes its counter and opcode. *)
     let start = wire 1 in
     let step = wire 1 in
@@ -61,13 +86,11 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
     let jump = wire 1 in
     let jump_address = wire program_bits in
     let program =
-      Program.create
+      Program.create ~read
         {
           Program.Input.clock = inputs.clock;
           reset = program_reset;
           load = loader.load;
-          load_address = loader.load_address;
-          load_opcode = loader.load_opcode;
           program_size = loader.program_size;
           start;
           step;

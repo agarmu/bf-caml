@@ -5,19 +5,17 @@ module State = struct
   type t = Halted | Running [@@deriving compare, enumerate, sexp_of]
 end
 
-module Make (C : Config.S) (Memory : Memory.S) = struct
+module Make (C : Config.S) = struct
   let program_bits = C.program_bits
   let capacity = Config.entries program_bits - 1
 
-  (* Load one opcode per clock edge. [program_size] is the number of loaded opcodes,
-   from 0 to [capacity]. [start] begins a run; [step] advances the counter. *)
+  (* [program_size] is the number of loaded opcodes, from 0 to [capacity].
+   [start] begins a run; [step] advances the counter. *)
   module Input = struct
     type 'a t = {
       clock : 'a;
       reset : 'a;
       load : 'a;
-      load_address : 'a; [@bits program_bits]
-      load_opcode : 'a; [@bits 8]
       program_size : 'a; [@bits program_bits]
       start : 'a;
       step : 'a;
@@ -37,17 +35,11 @@ module Make (C : Config.S) (Memory : Memory.S) = struct
     [@@deriving hardcaml]
   end
 
-  let create (inputs : _ Input.t) =
+  let create ~(read : Memory.read) (inputs : _ Input.t) =
     let spec = Reg_spec.create ~clock:inputs.clock ~clear:inputs.reset () in
     let state = Always.State_machine.create (module State) spec in
     let pc = Always.Variable.reg spec ~width:program_bits in
-    let memory =
-      Memory.create ~address_bits:program_bits ~clear:gnd ~clock:inputs.clock
-        ~reset:inputs.reset
-        ~address:(mux2 inputs.load inputs.load_address pc.value)
-        ~write_enable:(inputs.load &: (inputs.load_address <:. capacity))
-        ~write_data:inputs.load_opcode
-    in
+    let memory = read ~address:pc.value in
     let advance = inputs.step &: state.is Running &: ~:(inputs.load) in
     (* A jump to [program_size] halts; otherwise the final sequential step halts. *)
     let last = pc.value ==: inputs.program_size -:. 1 in
