@@ -1,6 +1,10 @@
 open Hardcaml
 open Signal
 
+module State = struct
+  type t = Loading | Finished [@@deriving compare, enumerate, sexp_of]
+end
+
 module Make (C : Config.S) = struct
   let program_bits = C.program_bits
   let capacity = Config.entries program_bits - 1
@@ -29,31 +33,32 @@ module Make (C : Config.S) = struct
 
   let create (inputs : _ Input.t) =
     let spec = Reg_spec.create ~clock:inputs.clock ~clear:inputs.reset () in
-    (* The count is also the address for the next accepted opcode. *)
-    let program_size = wire program_bits in
-    let finished = wire 1 in
+    let state = Always.State_machine.create (module State) spec in
+    let program_size = Always.Variable.reg spec ~width:program_bits in
+    let finished = state.is Finished in
     let valid_opcode =
-      List.fold_left
-        (fun valid (opcode, _) ->
-          valid |: Instruction.matches inputs.byte opcode)
-        gnd Instruction.opcode_chars
+      List.map
+        (fun (opcode, _) -> Instruction.matches inputs.byte opcode)
+        Instruction.opcode_chars
+      |> reduce ~f:( |: )
     in
     let load =
       inputs.byte_valid &: valid_opcode &: ~:(inputs.reset) &: ~:(inputs.finish)
       &: ~:finished
     in
-    program_size
-    <== reg_fb spec ~enable:load ~width:program_bits ~f:(fun size -> size +:. 1);
-    (* Finishing or filling the store makes later bytes inert until reset. *)
-    finished
-    <== reg_fb spec ~width:1 ~f:(fun was_finished ->
-        was_finished |: inputs.finish
-        |: (load &: (program_size ==:. capacity - 1)));
+    Always.(
+      compile
+        [
+          when_ load [ program_size <-- program_size.value +:. 1 ];
+          when_
+            (inputs.finish |: (load &: (program_size.value ==:. capacity - 1)))
+            [ state.set_next Finished ];
+        ]);
     {
       Output.load;
-      load_address = program_size;
+      load_address = program_size.value;
       load_opcode = inputs.byte;
-      program_size;
+      program_size = program_size.value;
       finished;
     }
 end

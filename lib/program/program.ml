@@ -1,6 +1,10 @@
 open Hardcaml
 open Signal
 
+module State = struct
+  type t = Halted | Running [@@deriving compare, enumerate, sexp_of]
+end
+
 module Make (C : Config.S) = struct
   let program_bits = C.program_bits
   let capacity = Config.entries program_bits - 1
@@ -34,9 +38,8 @@ module Make (C : Config.S) = struct
 
   let create (inputs : _ Input.t) =
     let spec = Reg_spec.create ~clock:inputs.clock ~clear:inputs.reset () in
-    (* These registers reset to zero, so the program starts halted. *)
-    let pc = wire program_bits in
-    let running = wire 1 in
+    let state = Always.State_machine.create (module State) spec in
+    let pc = Always.Variable.reg spec ~width:program_bits in
     (* The opcode at [pc] is available without advancing the program. *)
     let opcode =
       memory capacity
@@ -48,21 +51,30 @@ module Make (C : Config.S) = struct
             write_address = inputs.load_address;
             write_data = inputs.load_opcode;
           }
-        ~read_address:pc
+        ~read_address:pc.value
     in
-    let advance = inputs.step &: running &: ~:(inputs.load) in
+    let advance = inputs.step &: state.is Running &: ~:(inputs.load) in
     (* A jump to [program_size] halts; otherwise the final sequential step halts. *)
-    let last = pc ==: inputs.program_size -:. 1 in
+    let last = pc.value ==: inputs.program_size -:. 1 in
     let continue =
       mux2 inputs.jump (inputs.jump_address <: inputs.program_size) ~:last
     in
-    let next_pc = mux2 inputs.jump inputs.jump_address (pc +:. 1) in
-    pc
-    <== reg spec
-          ~enable:(inputs.start |: (advance &: continue))
-          (mux2 inputs.start (zero program_bits) next_pc);
-    running
-    <== reg spec ~enable:(inputs.start |: advance)
-          (mux2 inputs.start (inputs.program_size <>:. 0) continue);
-    { Output.pc; opcode; halted = ~:running }
+    let next_pc = mux2 inputs.jump inputs.jump_address (pc.value +:. 1) in
+    Always.(
+      compile
+        [
+          if_ inputs.start
+            [
+              pc <-- zero program_bits;
+              if_
+                (inputs.program_size <>:. 0)
+                [ state.set_next Running ]
+                [ state.set_next Halted ];
+            ]
+            [
+              when_ advance
+                [ if_ continue [ pc <-- next_pc ] [ state.set_next Halted ] ];
+            ];
+        ]);
+    { Output.pc = pc.value; opcode; halted = state.is Halted }
 end
