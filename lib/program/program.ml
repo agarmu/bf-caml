@@ -5,7 +5,7 @@ module State = struct
   type t = Halted | Running [@@deriving compare, enumerate, sexp_of]
 end
 
-module Make (C : Config.S) = struct
+module Make (C : Config.S) (Memory : Memory.S) = struct
   let program_bits = C.program_bits
   let capacity = Config.entries program_bits - 1
 
@@ -32,6 +32,7 @@ module Make (C : Config.S) = struct
       pc : 'a; [@bits program_bits]
       opcode : 'a; [@bits 8]
       halted : 'a;
+      ready : 'a;
     }
     [@@deriving hardcaml]
   end
@@ -40,18 +41,12 @@ module Make (C : Config.S) = struct
     let spec = Reg_spec.create ~clock:inputs.clock ~clear:inputs.reset () in
     let state = Always.State_machine.create (module State) spec in
     let pc = Always.Variable.reg spec ~width:program_bits in
-    (* The opcode at [pc] is available without advancing the program. *)
-    let opcode =
-      memory capacity
-        ~write_port:
-          {
-            Write_port.write_clock = inputs.clock;
-            (* The count has room for [capacity], which lies outside the store. *)
-            write_enable = inputs.load &: (inputs.load_address <:. capacity);
-            write_address = inputs.load_address;
-            write_data = inputs.load_opcode;
-          }
-        ~read_address:pc.value
+    let memory =
+      Memory.create ~address_bits:program_bits ~clear:gnd ~clock:inputs.clock
+        ~reset:inputs.reset
+        ~address:(mux2 inputs.load inputs.load_address pc.value)
+        ~write_enable:(inputs.load &: (inputs.load_address <:. capacity))
+        ~write_data:inputs.load_opcode
     in
     let advance = inputs.step &: state.is Running &: ~:(inputs.load) in
     (* A jump to [program_size] halts; otherwise the final sequential step halts. *)
@@ -76,5 +71,10 @@ module Make (C : Config.S) = struct
                 [ if_ continue [ pc <-- next_pc ] [ state.set_next Halted ] ];
             ];
         ]);
-    { Output.pc = pc.value; opcode; halted = state.is Halted }
+    {
+      Output.pc = pc.value;
+      opcode = memory.data;
+      halted = state.is Halted;
+      ready = memory.ready;
+    }
 end

@@ -3,8 +3,7 @@ module Config = Bf_caml.Config.Make (struct
   let tape_length = 16
 end)
 
-module Memory = Bf_caml.Ram_memory.Make (Config)
-module Simulation = Bf_caml.Simulation.Make (Config) (Memory)
+module Simulation = Bf_caml.Simulation.Make (Config) (Bf_caml.Ram_memory)
 
 let () =
   match Sys.argv with

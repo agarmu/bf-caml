@@ -26,6 +26,7 @@ module Make (C : Config.S) = struct
       reset : 'a;
       load_finished : 'a;
       program_halted : 'a;
+      program_ready : 'a;
       pc : 'a; [@bits program_bits]
       opcode : 'a; [@bits 8]
     }
@@ -63,7 +64,7 @@ module Make (C : Config.S) = struct
       state.is Waiting_for_program &: inputs.load_finished &: ~:(inputs.reset)
     in
     let scanning = state.is Scanning &: ~:(inputs.reset) in
-    let scan = scanning &: ~:(inputs.program_halted) in
+    let scan = scanning &: inputs.program_ready &: ~:(inputs.program_halted) in
     let scan_complete = scanning &: inputs.program_halted in
     let pop = scan &: Instruction.matches inputs.opcode Instruction.Loop_end in
     let stack =

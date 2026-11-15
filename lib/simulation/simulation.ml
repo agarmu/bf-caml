@@ -4,7 +4,7 @@ type error = Program_too_large of int | Unmatched_brackets
 
 module Make (C : Config.S) (Memory : Memory.S) = struct
   module Cpu = Cpu.Make_with_memory (C) (Memory)
-  module Program = Program.Make (C)
+  module Program = Program.Make (C) (Memory)
   module Sim = Cyclesim.With_interface (Cpu.Input) (Cpu.Output)
 
   let parse source =

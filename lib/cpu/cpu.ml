@@ -3,7 +3,7 @@ open Signal
 
 module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
   module Loader = Loader.Make (C)
-  module Program = Program.Make (C)
+  module Program = Program.Make (C) (Memory)
   module Brackets = Brackets.Make (C)
   module Tape = Tape.Make_with_memory (C) (Memory)
   module Pipeline = Instruction_pipeline.Make (C)
@@ -82,6 +82,7 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
           reset = program_reset;
           load_finished = loader.finished;
           program_halted = program.halted;
+          program_ready = program.ready;
           pc = program.pc;
           opcode = program.opcode;
         }
@@ -93,9 +94,9 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
     let cell_ready = wire 1 in
     let execution_ready = wire 1 in
     let instruction =
-      Pipeline.create ~clock:inputs.clock ~reset:program_reset ~enable:running
-        ~pc:program.pc ~opcode:program.opcode ~cell ~cell_ready
-        ~ready:execution_ready
+      Pipeline.create ~clock:inputs.clock ~reset:program_reset
+        ~enable:(running &: program.ready) ~pc:program.pc ~opcode:program.opcode
+        ~cell ~cell_ready ~ready:execution_ready
     in
     let opcode = instruction.value.opcode in
     let is_input = Instruction.matches opcode Instruction.Input in
@@ -143,4 +144,4 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
     }
 end
 
-module Make (C : Config.S) = Make_with_memory (C) (Register_memory.Make (C))
+module Make (C : Config.S) = Make_with_memory (C) (Register_memory)

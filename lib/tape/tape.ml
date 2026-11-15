@@ -4,10 +4,6 @@ open Signal
 module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
   let pointer_bits = C.pointer_bits
 
-  let () =
-    if Memory.address_bits <> pointer_bits then
-      invalid_arg "tape and memory address widths must match"
-
   module Input = struct
     type 'a t = {
       clock : 'a;
@@ -57,8 +53,8 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
         (cell +: uresize increment 8 -: uresize decrement 8)
     in
     let memory =
-      Memory.create ~clock:inputs.clock ~reset:inputs.reset
-        ~address:pointer.address
+      Memory.create ~address_bits:pointer_bits ~clear:inputs.reset
+        ~clock:inputs.clock ~reset:inputs.reset ~address:pointer.address
         ~write_enable:(enable &: (increment |: decrement |: input))
         ~write_data
     in
@@ -74,4 +70,4 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
     }
 end
 
-module Make (C : Config.S) = Make_with_memory (C) (Register_memory.Make (C))
+module Make (C : Config.S) = Make_with_memory (C) (Register_memory)
