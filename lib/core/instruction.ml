@@ -31,7 +31,5 @@ let char_opcodes = List.map Pair.swap opcode_chars
 let of_char c = List.assoc_opt c char_opcodes
 let to_char c = List.assoc c opcode_chars
 let to_bits = Hardcaml.Bits.of_char %> to_char
-
-let matches signal opcode =
-  let expected = Hardcaml.Signal.of_char (to_char opcode) in
-  signal ==: expected
+let to_signal = Hardcaml.Signal.of_char %> to_char
+let matches signal opcode = signal ==: to_signal opcode

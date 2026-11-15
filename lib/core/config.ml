@@ -1,6 +1,7 @@
 module type S = sig
   val program_bits : int
   val pointer_bits : int
+  val program_capacity : int
 end
 
 module type Sizes = sig
@@ -26,4 +27,5 @@ module Make (C : Sizes) = struct
 
   let program_bits = bits_for_power_of_two "max_program_size" max_program_size
   let pointer_bits = bits_for_power_of_two "tape_length" tape_length
+  let program_capacity = entries program_bits - 1
 end

@@ -2,33 +2,21 @@ open Hardcaml
 
 type error = Program_too_large of int | Unmatched_brackets
 
-module Make (C : Config.S) (Memory : Memory.S) = struct
-  module Cpu = Cpu.Make_with_memory (C) (Memory)
-  module Program = Program.Make (C)
+module Make (C : Config.S) (Memory : Memory.S) (Source : Source.S) = struct
+  module Cpu = Cpu.Make_with_source (C) (Memory) (Source)
   module Sim = Cyclesim.With_interface (Cpu.Input) (Cpu.Output)
 
   let parse source =
     String.to_seq source |> Seq.filter_map Instruction.of_char |> List.of_seq
 
-  let pulse sim port =
-    port := Bits.vdd;
-    Cyclesim.cycle sim;
-    port := Bits.gnd
-
   let load (sim : Sim.t) program =
     let i = Cyclesim.inputs sim in
+    let cycle () = Cyclesim.cycle sim in
     Cpu.Input.iter i ~f:(fun port -> port := Bits.zero (Bits.width !port));
     i.output_ready := Bits.vdd;
-    pulse sim i.reset;
-    pulse sim i.new_program;
-    i.byte_valid := Bits.vdd;
-    List.iter
-      (fun op ->
-        i.byte := Instruction.to_bits op;
-        Cyclesim.cycle sim)
-      program;
-    i.byte_valid := Bits.gnd;
-    pulse sim i.finish
+    Helpers.pulse ~cycle i.reset;
+    Helpers.pulse ~cycle i.new_program;
+    Source.load i.source ~cycle program
 
   let step (sim : Sim.t) ~read ~write =
     let i = Cyclesim.inputs sim in
@@ -52,15 +40,12 @@ module Make (C : Config.S) (Memory : Memory.S) = struct
     if Bits.to_bool !(o.invalid_program) then Error Unmatched_brackets
     else Ok ()
 
-  let run ?vcd_path ?(rom = false) ~read ~write source =
+  let run ?vcd_path ~read ~write source =
     let program = parse source in
-    if List.length program > Program.capacity then
-      Error (Program_too_large Program.capacity)
+    if List.length program > C.program_capacity then
+      Error (Program_too_large C.program_capacity)
     else
-      let sim =
-        Sim.create (Cpu.create ?rom:(if rom then Some program else None))
-      in
-      let program = if rom then [] else program in
+      let sim = Sim.create (Cpu.create program) in
       match vcd_path with
       | None -> execute sim ~read ~write program
       | Some path ->

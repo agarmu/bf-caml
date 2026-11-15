@@ -7,7 +7,7 @@ end
 
 module Make (C : Config.S) = struct
   let program_bits = C.program_bits
-  let capacity = Config.entries program_bits - 1
+  let capacity = C.program_capacity
 
   (* [program_size] is the number of loaded opcodes, from 0 to [capacity].
    [start] begins a run; [step] advances the counter. *)

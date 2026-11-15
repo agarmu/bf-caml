@@ -1,8 +1,8 @@
 open Hardcaml
 open Signal
 
-module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
-  module Loader = Loader.Make (C)
+module Make_with_source (C : Config.S) (Memory : Memory.S) (Source : Source.S) =
+struct
   module Program = Program.Make (C)
   module Brackets = Brackets.Make (C)
   module Tape = Tape.Make_with_memory (C) (Memory)
@@ -16,9 +16,7 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
       clock : 'a;
       reset : 'a;
       new_program : 'a;
-      byte_valid : 'a;
-      byte : 'a; [@bits 8]
-      finish : 'a;
+      source : 'a Source.Input.t;
       step : 'a;
       input_byte : 'a; [@bits 8]
       input_ready : 'a;
@@ -42,42 +40,11 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
     [@@deriving hardcaml]
   end
 
-  let preloaded rom =
-    if List.length rom > Program.capacity then
-      invalid_arg "program too large for ROM";
-    {
-      Loader.Output.load = gnd;
-      load_address = zero program_bits;
-      load_opcode = zero 8;
-      program_size = of_int ~width:program_bits (List.length rom);
-      finished = vdd;
-    }
-
-  let program_memory ~clock ~reset (loader : _ Loader.Output.t) = function
-    | Some rom ->
-        Rom.create
-          ~contents:(List.map (fun op -> of_char (Instruction.to_char op)) rom)
-    | None ->
-        fun ~address ->
-          Memory.create ~address_bits:program_bits ~clear:gnd ~clock ~reset
-            ~address:(mux2 loader.load loader.load_address address)
-            ~write_enable:loader.load ~write_data:loader.load_opcode
-
-  let create ?rom (inputs : _ Input.t) =
+  let create instructions (inputs : _ Input.t) =
     let program_reset = inputs.reset |: inputs.new_program in
-    let loader =
-      Loader.create
-        {
-          Loader.Input.clock = inputs.clock;
-          reset = program_reset;
-          byte_valid = inputs.byte_valid;
-          byte = inputs.byte;
-          finish = inputs.finish;
-        }
-    in
-    let loader = Option.fold rom ~none:loader ~some:preloaded in
-    let read =
-      program_memory ~clock:inputs.clock ~reset:program_reset loader rom
+    let source =
+      Source.create instructions ~clock:inputs.clock ~reset:program_reset
+        inputs.source
     in
     (* Connect these after Program exposes its counter and opcode. *)
     let start = wire 1 in
@@ -86,12 +53,12 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
     let jump = wire 1 in
     let jump_address = wire program_bits in
     let program =
-      Program.create ~read
+      Program.create ~read:source.read
         {
           Program.Input.clock = inputs.clock;
           reset = program_reset;
-          load = loader.load;
-          program_size = loader.program_size;
+          load = source.load;
+          program_size = source.program_size;
           start;
           step;
           jump;
@@ -103,7 +70,7 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
         {
           Brackets.Input.clock = inputs.clock;
           reset = program_reset;
-          load_finished = loader.finished;
+          load_finished = source.finished;
           program_halted = program.halted;
           program_ready = program.ready;
           pc = program.pc;
@@ -166,5 +133,8 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
       output_byte = instruction.value.cell;
     }
 end
+
+module Make_with_memory (C : Config.S) (Memory : Memory.S) =
+  Make_with_source (C) (Memory) (Source.Loaded (C) (Memory))
 
 module Make (C : Config.S) = Make_with_memory (C) (Register_memory)

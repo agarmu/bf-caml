@@ -7,16 +7,10 @@ end
 
 module Make (C : Config.S) = struct
   let program_bits = C.program_bits
-  let capacity = Config.entries program_bits - 1
+  let capacity = C.program_capacity
 
   module Input = struct
-    type 'a t = {
-      clock : 'a;
-      reset : 'a;
-      byte_valid : 'a;
-      byte : 'a; [@bits 8]
-      finish : 'a;
-    }
+    type 'a t = { byte_valid : 'a; byte : 'a; [@bits 8] finish : 'a }
     [@@deriving hardcaml]
   end
 
@@ -31,8 +25,8 @@ module Make (C : Config.S) = struct
     [@@deriving hardcaml]
   end
 
-  let create (inputs : _ Input.t) =
-    let spec = Reg_spec.create ~clock:inputs.clock ~clear:inputs.reset () in
+  let create ~clock ~reset (inputs : _ Input.t) =
+    let spec = Reg_spec.create ~clock ~clear:reset () in
     let state = Always.State_machine.create (module State) spec in
     let program_size = Always.Variable.reg spec ~width:program_bits in
     let finished = state.is Finished in
@@ -43,7 +37,7 @@ module Make (C : Config.S) = struct
       |> reduce ~f:( |: )
     in
     let load =
-      inputs.byte_valid &: valid_opcode &: ~:(inputs.reset) &: ~:(inputs.finish)
+      inputs.byte_valid &: valid_opcode &: ~:reset &: ~:(inputs.finish)
       &: ~:finished
     in
     Always.(

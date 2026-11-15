@@ -3,7 +3,10 @@ module Config = Bf_caml.Config.Make (struct
   let tape_length = 16
 end)
 
-module Simulation = Bf_caml.Simulation.Make (Config) (Bf_caml.Ram_memory)
+module Memory = Bf_caml.Ram_memory
+module Simulation = Bf_caml.Simulation.Make (Config) (Memory)
+module Loaded = Simulation (Bf_caml.Source.Loaded (Config) (Memory))
+module Rom = Simulation (Bf_caml.Source.Rom (Config))
 
 let () =
   match Sys.argv with
@@ -19,8 +22,8 @@ let () =
         flush stdout
       in
       match
-        Simulation.run ~vcd_path:"cell.vcd"
-          ~rom:(Array.length Sys.argv = 3)
+        (if Array.length Sys.argv = 3 then Rom.run else Loaded.run)
+          ~vcd_path:"cell.vcd"
           ~read:(fun () -> In_channel.input_char stdin)
           ~write source
       with

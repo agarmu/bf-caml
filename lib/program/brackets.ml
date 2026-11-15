@@ -8,7 +8,7 @@ end
 
 module Make (C : Config.S) = struct
   let program_bits = C.program_bits
-  let capacity = Config.entries program_bits - 1
+  let capacity = C.program_capacity
 
   module Address = struct
     type 'a t = { address : 'a [@bits program_bits] } [@@deriving hardcaml]
