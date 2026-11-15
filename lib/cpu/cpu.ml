@@ -40,31 +40,23 @@ struct
     [@@deriving hardcaml]
   end
 
-  let create instructions (inputs : _ Input.t) =
-    let program_reset = inputs.reset |: inputs.new_program in
-    let source =
-      Source.create instructions ~clock:inputs.clock ~reset:program_reset
-        inputs.source
-    in
-    (* Connect these after Program exposes its counter and opcode. *)
+  let fetch ~clock ~reset (source : Source.t) ~step ~jump =
     let start = wire 1 in
-    let step = wire 1 in
-    let execute_step = wire 1 in
-    let jump = wire 1 in
+    let scan = wire 1 in
     let jump_address = wire program_bits in
     let program =
-      Program.create ~clock:inputs.clock ~reset:program_reset ~read:source.read
+      Program.create ~clock ~reset ~read:source.read
         {
           Program.Input.load = source.load;
           program_size = source.program_size;
           start;
-          step;
+          step = scan |: step;
           jump;
           jump_address;
         }
     in
     let brackets =
-      Brackets.create ~clock:inputs.clock ~reset:program_reset
+      Brackets.create ~clock ~reset
         {
           Brackets.Input.load_finished = source.finished;
           program_halted = program.halted;
@@ -73,24 +65,31 @@ struct
           opcode = program.opcode;
         }
     in
-    let running =
-      inputs.step &: brackets.ready &: ~:(program.halted) &: ~:program_reset
-    in
+    start <== brackets.start;
+    scan <== brackets.scan;
+    jump_address <== brackets.match_address +:. 1;
+    (program, brackets)
+
+  let io_ready (inputs : _ Input.t) opcode =
+    let blocked kind ready = Instruction.matches opcode kind &: ~:ready in
+    ~:(blocked Input inputs.input_ready |: blocked Output inputs.output_ready)
+
+  let execute (inputs : _ Input.t) ~reset ~running
+      (program : _ Program.Output.t) =
     let cell = wire 8 in
     let cell_ready = wire 1 in
-    let execution_ready = wire 1 in
+    let ready = wire 1 in
     let instruction =
-      Pipeline.create ~clock:inputs.clock ~reset:program_reset
+      Pipeline.create ~clock:inputs.clock ~reset
         ~enable:(running &: program.ready) ~pc:program.pc ~opcode:program.opcode
-        ~cell ~cell_ready ~ready:execution_ready
+        ~cell ~cell_ready ~ready
     in
     let opcode = instruction.value.opcode in
-    let is_input = Instruction.matches opcode Instruction.Input in
-    let is_output = Instruction.matches opcode Instruction.Output in
+    let step = instruction.valid &: ready in
     let tape =
       Tape.create ~clock:inputs.clock ~reset:inputs.reset
         {
-          Tape.Input.enable = execute_step;
+          Tape.Input.enable = step;
           opcode;
           input_byte = inputs.input_byte;
           pointer_load = gnd;
@@ -99,32 +98,40 @@ struct
     in
     cell <== tape.cell;
     cell_ready <== tape.ready;
-    let run_step = running &: instruction.valid in
-    execution_ready
-    <== (running
-        &: (~:is_input |: inputs.input_ready)
-        &: (~:is_output |: inputs.output_ready));
-    execute_step <== (instruction.valid &: execution_ready);
-    start <== brackets.start;
-    step <== (brackets.scan |: execute_step);
-    let opening = Instruction.matches opcode Instruction.Loop_start in
-    let closing = Instruction.matches opcode Instruction.Loop_end in
-    jump
-    <== (execute_step
-        &: (opening
-           &: (instruction.value.cell ==:. 0)
-           |: (closing &: (instruction.value.cell <>:. 0))));
-    jump_address <== brackets.match_address +:. 1;
+    ready <== (running &: io_ready inputs opcode);
+    (instruction, tape, step)
+
+  let jumps ~opcode ~cell =
+    let is = Instruction.matches opcode in
+    is Loop_start &: (cell ==:. 0) |: (is Loop_end &: (cell <>:. 0))
+
+  let create instructions (inputs : _ Input.t) =
+    let clock = inputs.clock in
+    let reset = inputs.reset |: inputs.new_program in
+    let source = Source.create instructions ~clock ~reset inputs.source in
+    let step = wire 1 in
+    let jump = wire 1 in
+    let program, brackets = fetch ~clock ~reset source ~step ~jump in
+    let running =
+      inputs.step &: brackets.ready &: ~:(program.halted) &: ~:reset
+    in
+    let instruction, tape, executed = execute inputs ~reset ~running program in
+    let { Pipeline.Execute_data.pc; opcode; cell } = instruction.value in
+    step <== executed;
+    jump <== (executed &: jumps ~opcode ~cell);
+    let issued kind =
+      running &: instruction.valid &: Instruction.matches opcode kind
+    in
     {
-      Output.pc = mux2 instruction.valid instruction.value.pc program.pc;
+      Output.pc = mux2 instruction.valid pc program.pc;
       opcode = mux2 instruction.valid opcode program.opcode;
       halted = brackets.ready &: program.halted |: brackets.invalid_program;
       pointer = tape.pointer;
       current_cell = tape.cell;
       invalid_program = brackets.invalid_program;
-      input_needed = run_step &: is_input;
-      output_valid = run_step &: is_output;
-      output_byte = instruction.value.cell;
+      input_needed = issued Input;
+      output_valid = issued Output;
+      output_byte = cell;
     }
 end
 

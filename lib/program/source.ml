@@ -10,6 +10,8 @@ type t = {
 }
 
 module type S = sig
+  type nonrec t = t
+
   module Input : Interface.S
 
   val create :
@@ -24,6 +26,8 @@ module type S = sig
 end
 
 module Loaded (C : Config.S) (Memory : Memory.S) : S = struct
+  type nonrec t = t
+
   module Loader = Loader.Make (C)
   module Input = Loader.Input
 
@@ -51,6 +55,8 @@ module Loaded (C : Config.S) (Memory : Memory.S) : S = struct
 end
 
 module Rom (C : Config.S) : S = struct
+  type nonrec t = t
+
   module Input = Interface.Empty
 
   let create program ~clock:_ ~reset:_ _ =
