@@ -9,8 +9,6 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
       enable : 'a;
       opcode : 'a; [@bits 8]
       input_byte : 'a; [@bits 8]
-      pointer_load : 'a;
-      pointer_next : 'a; [@bits pointer_bits]
     }
     [@@deriving hardcaml]
   end
@@ -26,21 +24,20 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
   end
 
   let create ~clock ~reset (inputs : _ Input.t) =
-    (* Cell writes use the current pointer. A pointer load takes effect after the
-     same clock edge, so simultaneous load and write target the old address. *)
     let ready = wire 1 in
     let enable = inputs.enable &: ready in
+    let move_right =
+      enable &: Instruction.matches inputs.opcode Instruction.Move_right
+    in
+    let move_left =
+      enable &: Instruction.matches inputs.opcode Instruction.Move_left
+    in
     let pointer =
-      let module Pointer = Pointer.Make (C) in
-      Pointer.create
-        {
-          Pointer.Input.clock;
-          reset;
-          enable;
-          opcode = inputs.opcode;
-          load = inputs.pointer_load;
-          next_address = inputs.pointer_next;
-        }
+      reg_fb (Reg_spec.create ~clock ~clear:reset ())
+        ~enable:(move_right |: move_left) ~width:pointer_bits ~f:(fun current ->
+          current
+          +: uresize move_right pointer_bits
+          -: uresize move_left pointer_bits)
     in
     let cell = wire 8 in
     let increment = Instruction.matches inputs.opcode Instruction.Increment in
@@ -52,14 +49,14 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
     in
     let memory =
       Memory.create ~address_bits:pointer_bits ~clear:reset ~clock ~reset
-        ~address:pointer.address
+        ~address:pointer
         ~write_enable:(enable &: (increment |: decrement |: input))
         ~write_data
     in
     cell <== memory.data;
     ready <== memory.ready;
     {
-      Output.pointer = pointer.address;
+      Output.pointer;
       cell;
       ready;
       output_valid =

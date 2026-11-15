@@ -88,13 +88,7 @@ struct
     let step = instruction.valid &: ready in
     let tape =
       Tape.create ~clock:inputs.clock ~reset:inputs.reset
-        {
-          Tape.Input.enable = step;
-          opcode;
-          input_byte = inputs.input_byte;
-          pointer_load = gnd;
-          pointer_next = zero pointer_bits;
-        }
+        { Tape.Input.enable = step; opcode; input_byte = inputs.input_byte }
     in
     cell <== tape.cell;
     cell_ready <== tape.ready;
