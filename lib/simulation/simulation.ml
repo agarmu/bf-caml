@@ -16,7 +16,8 @@ module Make (C : Config.S) (Memory : Memory.S) (Source : Source.S) = struct
     i.output_ready := Bits.vdd;
     Helpers.pulse ~cycle i.reset;
     Helpers.pulse ~cycle i.new_program;
-    Source.load i.source ~cycle program
+    let o = Cyclesim.outputs sim ~clock_edge:Before in
+    Source.load i.source o.source ~cycle program
 
   let step (sim : Sim.t) ~read ~write =
     let i = Cyclesim.inputs sim in

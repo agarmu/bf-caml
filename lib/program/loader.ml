@@ -16,6 +16,7 @@ module Make (C : Config.S) = struct
 
   module Output = struct
     type 'a t = {
+      byte_ready : 'a;
       load : 'a;
       opcode : 'a; [@bits Instruction.bits]
       program_size : 'a; [@bits program_bits]
@@ -30,9 +31,9 @@ module Make (C : Config.S) = struct
     let program_size = Always.Variable.reg spec ~width:program_bits in
     let finished = state.is Finished in
     let opcode = Instruction.decode inputs.byte in
+    let byte_ready = ~:reset &: ~:finished in
     let load =
-      inputs.byte_valid &: opcode.valid &: ~:reset &: ~:(inputs.finish)
-      &: ~:finished
+      inputs.byte_valid &: byte_ready &: opcode.valid &: ~:(inputs.finish)
     in
     Always.(
       compile
@@ -43,7 +44,8 @@ module Make (C : Config.S) = struct
             [ state.set_next Finished ];
         ]);
     {
-      Output.load;
+      Output.byte_ready;
+      load;
       opcode = opcode.value;
       program_size = program_size.value;
       finished;

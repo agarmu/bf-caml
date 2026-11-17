@@ -36,6 +36,7 @@ struct
       input_needed : 'a;
       output_valid : 'a;
       output_byte : 'a; [@bits 8]
+      source : 'a Source.Output.t;
     }
     [@@deriving hardcaml]
   end
@@ -102,7 +103,9 @@ struct
   let create instructions (inputs : _ Input.t) =
     let clock = inputs.clock in
     let reset = inputs.reset |: inputs.new_program in
-    let source = Source.create instructions ~clock ~reset inputs.source in
+    let source, source_outputs =
+      Source.create instructions ~clock ~reset inputs.source
+    in
     let step = wire 1 in
     let jump = wire 1 in
     let program, brackets = fetch ~clock ~reset source ~step ~jump in
@@ -130,6 +133,7 @@ struct
       input_needed = issued Input;
       output_valid = issued Output;
       output_byte = cell;
+      source = source_outputs;
     }
 end
 
