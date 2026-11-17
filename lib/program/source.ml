@@ -59,14 +59,16 @@ module Rom (C : Config.S) : S = struct
 
   module Input = Interface.Empty
 
-  let create program ~clock:_ ~reset:_ _ =
+  let create program ~clock ~reset _ =
     let size = List.length program in
     if size > C.program_capacity then invalid_arg "program too large for ROM";
     {
       load = gnd;
       program_size = of_int ~width:C.program_bits size;
       finished = vdd;
-      read = Rom.create ~contents:(List.map Instruction.to_signal program);
+      read =
+        Rom.create ~clock ~reset
+          ~contents:(List.map Instruction.to_signal program);
     }
 
   let load _ ~cycle:_ _ = ()
