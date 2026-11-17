@@ -5,14 +5,17 @@ module Make (C : Config.S) = struct
   let program_bits = C.program_bits
 
   module Fetch_data = struct
-    type 'a t = { pc : 'a; [@bits program_bits] opcode : 'a [@bits 8] }
+    type 'a t = {
+      pc : 'a; [@bits program_bits]
+      opcode : 'a Instruction.Opcode.t;
+    }
     [@@deriving hardcaml]
   end
 
   module Execute_data = struct
     type 'a t = {
       pc : 'a; [@bits program_bits]
-      opcode : 'a; [@bits 8]
+      opcode : 'a Instruction.Opcode.t;
       cell : 'a; [@bits 8]
     }
     [@@deriving hardcaml]

@@ -26,7 +26,7 @@ module Make (C : Config.S) = struct
       program_halted : 'a;
       program_ready : 'a;
       pc : 'a; [@bits program_bits]
-      opcode : 'a; [@bits 8]
+      opcode : 'a Instruction.Opcode.t;
     }
     [@@deriving hardcaml]
   end
@@ -64,15 +64,14 @@ module Make (C : Config.S) = struct
     let scanning = state.is Scanning &: ~:reset in
     let scan = scanning &: inputs.program_ready &: ~:(inputs.program_halted) in
     let scan_complete = scanning &: inputs.program_halted in
-    let pop = scan &: Instruction.matches inputs.opcode Instruction.Loop_end in
+    let pop = scan &: Instruction.is inputs.opcode Loop_end in
     let stack =
       Stack.create (Scope.create ())
         {
           Stack.I.clock;
           clear = reset;
           wr_data = { Address.address = inputs.pc };
-          push =
-            scan &: Instruction.matches inputs.opcode Instruction.Loop_start;
+          push = scan &: Instruction.is inputs.opcode Loop_start;
           pop;
         }
     in

@@ -26,7 +26,7 @@ module Make (C : Config.S) = struct
   module Output = struct
     type 'a t = {
       pc : 'a; [@bits program_bits]
-      opcode : 'a; [@bits 8]
+      opcode : 'a Instruction.Opcode.t;
       halted : 'a;
       ready : 'a;
     }
@@ -63,7 +63,7 @@ module Make (C : Config.S) = struct
         ]);
     {
       Output.pc = pc.value;
-      opcode = memory.data;
+      opcode = Instruction.Opcode.Of_signal.of_raw memory.data;
       halted = state.is Halted;
       ready = memory.ready;
     }

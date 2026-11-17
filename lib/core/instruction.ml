@@ -1,35 +1,41 @@
+open Hardcaml
 open Helpers
-open Hardcaml.Signal
 
-(*
-  Use named opcodes in OCaml to make writing code easier
-  Though the circuit will receive/work with the raw characters
-*)
-type t =
-  | Move_right
-  | Move_left
-  | Increment
-  | Decrement
-  | Output
-  | Input
-  | Loop_start
-  | Loop_end
+module Cases = struct
+  type t =
+    | Move_right
+    | Move_left
+    | Increment
+    | Decrement
+    | Output
+    | Input
+    | Loop_start
+    | Loop_end
+  [@@deriving compare, enumerate, sexp_of]
+end
 
-let opcode_chars : (t * char) list =
-  [
-    (Move_right, '>');
-    (Move_left, '<');
-    (Increment, '+');
-    (Decrement, '-');
-    (Output, '.');
-    (Input, ',');
-    (Loop_start, '[');
-    (Loop_end, ']');
-  ]
+include Cases
+module Opcode = Enum.Make_binary (Cases)
 
-let char_opcodes = List.map Pair.swap opcode_chars
-let of_char c = List.assoc_opt c char_opcodes
-let to_char c = List.assoc c opcode_chars
-let to_bits = Hardcaml.Bits.of_char %> to_char
-let to_signal = Hardcaml.Signal.of_char %> to_char
-let matches signal opcode = signal ==: to_signal opcode
+let bits = Opcode.to_raw Opcode.port_widths
+let is = Opcode.Of_signal.is
+
+let to_char = function
+  | Move_right -> '>'
+  | Move_left -> '<'
+  | Increment -> '+'
+  | Decrement -> '-'
+  | Output -> '.'
+  | Input -> ','
+  | Loop_start -> '['
+  | Loop_end -> ']'
+
+let of_char c = List.find_opt (fun op -> to_char op = c) all
+let encode = Opcode.to_raw %> Opcode.Of_signal.of_enum
+
+let decode byte =
+  let hit op =
+    let code = Char.code (to_char op) in
+    { With_valid.valid = Signal.(byte ==:. code); value = encode op }
+  in
+  Signal.priority_select (List.map hit all)

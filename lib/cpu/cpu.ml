@@ -28,7 +28,7 @@ struct
   module Output = struct
     type 'a t = {
       pc : 'a; [@bits program_bits]
-      opcode : 'a; [@bits 8]
+      opcode : 'a Instruction.Opcode.t; [@rtlprefix "opcode_"]
       halted : 'a;
       pointer : 'a; [@bits pointer_bits]
       current_cell : 'a; [@bits 8]
@@ -71,7 +71,7 @@ struct
     (program, brackets)
 
   let io_ready (inputs : _ Input.t) opcode =
-    let blocked kind ready = Instruction.matches opcode kind &: ~:ready in
+    let blocked kind ready = Instruction.is opcode kind &: ~:ready in
     ~:(blocked Input inputs.input_ready |: blocked Output inputs.output_ready)
 
   let execute (inputs : _ Input.t) ~reset ~running
@@ -96,7 +96,7 @@ struct
     (instruction, tape, step)
 
   let jumps ~opcode ~cell =
-    let is = Instruction.matches opcode in
+    let is = Instruction.is opcode in
     is Loop_start &: (cell ==:. 0) |: (is Loop_end &: (cell <>:. 0))
 
   let create instructions (inputs : _ Input.t) =
@@ -114,11 +114,13 @@ struct
     step <== executed;
     jump <== (executed &: jumps ~opcode ~cell);
     let issued kind =
-      running &: instruction.valid &: Instruction.matches opcode kind
+      running &: instruction.valid &: Instruction.is opcode kind
     in
     {
       Output.pc = mux2 instruction.valid pc program.pc;
-      opcode = mux2 instruction.valid opcode program.opcode;
+      opcode =
+        Instruction.Opcode.Of_signal.mux2 instruction.valid opcode
+          program.opcode;
       halted = brackets.ready &: program.halted |: brackets.invalid_program;
       pointer = tape.pointer;
       current_cell = tape.cell;

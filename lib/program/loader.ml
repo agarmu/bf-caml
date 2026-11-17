@@ -17,6 +17,7 @@ module Make (C : Config.S) = struct
   module Output = struct
     type 'a t = {
       load : 'a;
+      opcode : 'a; [@bits Instruction.bits]
       program_size : 'a; [@bits program_bits]
       finished : 'a;
     }
@@ -28,14 +29,9 @@ module Make (C : Config.S) = struct
     let state = Always.State_machine.create (module State) spec in
     let program_size = Always.Variable.reg spec ~width:program_bits in
     let finished = state.is Finished in
-    let valid_opcode =
-      List.map
-        (fun (opcode, _) -> Instruction.matches inputs.byte opcode)
-        Instruction.opcode_chars
-      |> reduce ~f:( |: )
-    in
+    let opcode = Instruction.decode inputs.byte in
     let load =
-      inputs.byte_valid &: valid_opcode &: ~:reset &: ~:(inputs.finish)
+      inputs.byte_valid &: opcode.valid &: ~:reset &: ~:(inputs.finish)
       &: ~:finished
     in
     Always.(
@@ -46,5 +42,10 @@ module Make (C : Config.S) = struct
             (inputs.finish |: (load &: (program_size.value ==:. capacity - 1)))
             [ state.set_next Finished ];
         ]);
-    { Output.load; program_size = program_size.value; finished }
+    {
+      Output.load;
+      opcode = opcode.value;
+      program_size = program_size.value;
+      finished;
+    }
 end

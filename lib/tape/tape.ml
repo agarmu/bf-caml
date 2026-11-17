@@ -7,7 +7,7 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
   module Input = struct
     type 'a t = {
       enable : 'a;
-      opcode : 'a; [@bits 8]
+      opcode : 'a Instruction.Opcode.t;
       input_byte : 'a; [@bits 8]
     }
     [@@deriving hardcaml]
@@ -24,14 +24,11 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
   end
 
   let create ~clock ~reset (inputs : _ Input.t) =
+    let is = Instruction.is inputs.opcode in
     let ready = wire 1 in
     let enable = inputs.enable &: ready in
-    let move_right =
-      enable &: Instruction.matches inputs.opcode Instruction.Move_right
-    in
-    let move_left =
-      enable &: Instruction.matches inputs.opcode Instruction.Move_left
-    in
+    let move_right = enable &: is Move_right in
+    let move_left = enable &: is Move_left in
     let pointer =
       reg_fb (Reg_spec.create ~clock ~clear:reset ())
         ~enable:(move_right |: move_left) ~width:pointer_bits ~f:(fun current ->
@@ -40,9 +37,9 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
           -: uresize move_left pointer_bits)
     in
     let cell = wire 8 in
-    let increment = Instruction.matches inputs.opcode Instruction.Increment in
-    let decrement = Instruction.matches inputs.opcode Instruction.Decrement in
-    let input = Instruction.matches inputs.opcode Instruction.Input in
+    let increment = is Increment in
+    let decrement = is Decrement in
+    let input = is Input in
     let write_data =
       mux2 input inputs.input_byte
         (cell +: uresize increment 8 -: uresize decrement 8)
@@ -59,9 +56,7 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
       Output.pointer;
       cell;
       ready;
-      output_valid =
-        enable &: ~:reset
-        &: Instruction.matches inputs.opcode Instruction.Output;
+      output_valid = enable &: ~:reset &: is Output;
     }
 end
 

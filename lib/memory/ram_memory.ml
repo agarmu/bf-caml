@@ -31,7 +31,7 @@ let create ~address_bits ~clear ~clock ~reset ~address ~write_enable ~write_data
           Write_port.write_clock = clock;
           write_enable = ~:reset &: (~:initialized |: write_enable);
           write_address = mux2 initialized address clear_address;
-          write_data = mux2 initialized write_data (zero 8);
+          write_data = mux2 initialized write_data (zero (width write_data));
         }
       ~read_port:
         {

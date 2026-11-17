@@ -36,7 +36,7 @@ module Loaded (C : Config.S) (Memory : Memory.S) : S = struct
     let read ~address =
       Memory.create ~address_bits:C.program_bits ~clear:gnd ~clock ~reset
         ~address:(mux2 loader.load loader.program_size address)
-        ~write_enable:loader.load ~write_data:inputs.byte
+        ~write_enable:loader.load ~write_data:loader.opcode
     in
     {
       load = loader.load;
@@ -47,7 +47,7 @@ module Loaded (C : Config.S) (Memory : Memory.S) : S = struct
 
   let load (inputs : _ Input.t) ~cycle program =
     let send op =
-      inputs.byte := Instruction.to_bits op;
+      inputs.byte := Bits.of_char (Instruction.to_char op);
       cycle ()
     in
     holding inputs.byte_valid (fun () -> List.iter send program);
@@ -67,8 +67,8 @@ module Rom (C : Config.S) : S = struct
       program_size = of_int ~width:C.program_bits size;
       finished = vdd;
       read =
-        Rom.create ~clock ~reset
-          ~contents:(List.map Instruction.to_signal program);
+        Rom.create ~clock ~reset ~data_bits:Instruction.bits
+          ~contents:(List.map Instruction.encode program);
     }
 
   let load _ ~cycle:_ _ = ()
