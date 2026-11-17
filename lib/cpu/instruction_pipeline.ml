@@ -13,11 +13,7 @@ module Make (C : Config.S) = struct
   end
 
   module Execute_data = struct
-    type 'a t = {
-      pc : 'a; [@bits program_bits]
-      opcode : 'a Instruction.Opcode.t;
-      cell : 'a; [@bits 8]
-    }
+    type 'a t = { fetched : 'a Fetch_data.t; cell : 'a [@bits 8] }
     [@@deriving hardcaml]
   end
 
@@ -40,12 +36,7 @@ module Make (C : Config.S) = struct
     let execution =
       Execute.create_io spec
         {
-          Execute.IO.data =
-            {
-              Execute_data.pc = fetched.data.pc;
-              opcode = fetched.data.opcode;
-              cell;
-            };
+          Execute.IO.data = { Execute_data.fetched = fetched.data; cell };
           valid = fetched.valid &: cell_ready &: ~:reset;
           ready;
         }

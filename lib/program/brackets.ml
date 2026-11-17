@@ -64,14 +64,15 @@ module Make (C : Config.S) = struct
     let scanning = state.is Scanning &: ~:reset in
     let scan = scanning &: inputs.program_ready &: ~:(inputs.program_halted) in
     let scan_complete = scanning &: inputs.program_halted in
-    let pop = scan &: Instruction.is inputs.opcode Loop_end in
+    let is = Instruction.is inputs.opcode in
+    let pop = scan &: is Loop_end in
     let stack =
       Stack.create (Scope.create ())
         {
           Stack.I.clock;
           clear = reset;
           wr_data = { Address.address = inputs.pc };
-          push = scan &: Instruction.is inputs.opcode Loop_start;
+          push = scan &: is Loop_start;
           pop;
         }
     in

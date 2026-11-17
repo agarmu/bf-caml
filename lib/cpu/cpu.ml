@@ -84,7 +84,7 @@ struct
         ~enable:(running &: program.ready) ~pc:program.pc ~opcode:program.opcode
         ~cell ~cell_ready ~ready
     in
-    let opcode = instruction.value.opcode in
+    let opcode = instruction.value.fetched.opcode in
     let step = instruction.valid &: ready in
     let tape =
       Tape.create ~clock:inputs.clock ~reset:inputs.reset
@@ -110,7 +110,9 @@ struct
       inputs.step &: brackets.ready &: ~:(program.halted) &: ~:reset
     in
     let instruction, tape, executed = execute inputs ~reset ~running program in
-    let { Pipeline.Execute_data.pc; opcode; cell } = instruction.value in
+    let { Pipeline.Execute_data.fetched = { pc; opcode }; cell } =
+      instruction.value
+    in
     step <== executed;
     jump <== (executed &: jumps ~opcode ~cell);
     let issued kind =
