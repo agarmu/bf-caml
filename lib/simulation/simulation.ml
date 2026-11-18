@@ -2,6 +2,16 @@ open Hardcaml
 
 type error = Program_too_large of int | Unmatched_brackets
 
+module Stats = struct
+  type t = { load_cycles : int; execute_cycles : int; seconds : float }
+
+  let to_string { load_cycles; execute_cycles; seconds } =
+    Printf.sprintf "cycles: %d load + %d execute = %d total\ntime: %.3fs"
+      load_cycles execute_cycles
+      (load_cycles + execute_cycles)
+      seconds
+end
+
 module Make (C : Config.S) (Memory : Memory.S) (Source : Source.S) = struct
   module Cpu = Cpu.Make_with_source (C) (Memory) (Source)
   module Sim = Cyclesim.With_interface (Cpu.Input) (Cpu.Output)
@@ -11,13 +21,18 @@ module Make (C : Config.S) (Memory : Memory.S) (Source : Source.S) = struct
 
   let load (sim : Sim.t) program =
     let i = Cyclesim.inputs sim in
-    let cycle () = Cyclesim.cycle sim in
+    let cycles = ref 0 in
+    let cycle () =
+      incr cycles;
+      Cyclesim.cycle sim
+    in
     Cpu.Input.iter i ~f:(fun port -> port := Bits.zero (Bits.width !port));
     i.output_ready := Bits.vdd;
     Helpers.pulse ~cycle i.reset;
     Helpers.pulse ~cycle i.new_program;
     let o = Cyclesim.outputs sim ~clock_edge:Before in
-    Source.load i.source o.source ~cycle program
+    Source.load i.source o.source ~cycle program;
+    !cycles
 
   let step (sim : Sim.t) ~read ~write =
     let i = Cyclesim.inputs sim in
@@ -33,13 +48,22 @@ module Make (C : Config.S) (Memory : Memory.S) (Source : Source.S) = struct
 
   let execute (sim : Sim.t) ~read ~write program =
     let o = Cyclesim.outputs sim in
-    load sim program;
+    let start = Unix.gettimeofday () in
+    let load_cycles = load sim program in
     (Cyclesim.inputs sim).step := Bits.vdd;
+    let execute_cycles = ref 0 in
     while not (Bits.to_bool !(o.halted)) do
-      step sim ~read ~write
+      step sim ~read ~write;
+      incr execute_cycles
     done;
     if Bits.to_bool !(o.invalid_program) then Error Unmatched_brackets
-    else Ok ()
+    else
+      Ok
+        {
+          Stats.load_cycles;
+          execute_cycles = !execute_cycles;
+          seconds = Unix.gettimeofday () -. start;
+        }
 
   let run ?vcd_path ~read ~write source =
     let program = parse source in

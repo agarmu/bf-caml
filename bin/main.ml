@@ -25,7 +25,7 @@ let run ~rom path =
       ~read:(fun () -> In_channel.input_char stdin)
       ~write (read_source path)
   with
-  | Ok () -> ()
+  | Ok stats -> prerr_endline (Bf_caml.Simulation.Stats.to_string stats)
   | Error (Bf_caml.Simulation.Program_too_large capacity) ->
       Printf.eprintf "error: program exceeds %d instructions\n%!" capacity;
       exit 1
