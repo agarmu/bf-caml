@@ -40,11 +40,17 @@ let run ~rom path =
   | Error Bf_caml.Simulation.Unmatched_brackets ->
       prerr_endline "error: unmatched brackets";
       exit 1
-  | Error Bf_caml.Simulation.End_of_input ->
-      prerr_endline "\nerror: end of input";
+  | Error (Bf_caml.Simulation.Interrupted stats) ->
+      prerr_endline
+        ("\ninterrupted\n" ^ Bf_caml.Simulation.Stats.to_string stats);
+      exit 130
+  | Error (Bf_caml.Simulation.End_of_input stats) ->
+      prerr_endline
+        ("\nend of input\n" ^ Bf_caml.Simulation.Stats.to_string stats);
       exit 1
 
 let () =
+  Sys.catch_break true;
   match Sys.argv with
   | [| _; path |] -> run ~rom:false path
   | [| _; "--rom"; path |] -> run ~rom:true path

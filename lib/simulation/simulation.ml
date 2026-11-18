@@ -1,9 +1,5 @@
 open Hardcaml
 
-type error = Program_too_large of int | Unmatched_brackets | End_of_input
-
-exception End_of_input_reached
-
 module Stats = struct
   type t = { load_cycles : int; execute_cycles : int; seconds : float }
 
@@ -14,6 +10,14 @@ module Stats = struct
       seconds
 end
 
+type error =
+  | Program_too_large of int
+  | Unmatched_brackets
+  | Interrupted of Stats.t
+  | End_of_input of Stats.t
+
+exception End_of_input_reached
+
 module Make (C : Config.S) (Memory : Memory.S) (Source : Source.S) = struct
   module Cpu = Cpu.Make_with_source (C) (Memory) (Source)
   module Sim = Cyclesim.With_interface (Cpu.Input) (Cpu.Output)
@@ -21,9 +25,8 @@ module Make (C : Config.S) (Memory : Memory.S) (Source : Source.S) = struct
   let parse source =
     String.to_seq source |> Seq.filter_map Instruction.of_char |> List.of_seq
 
-  let load (sim : Sim.t) program =
+  let load (sim : Sim.t) ~cycles program =
     let i = Cyclesim.inputs sim in
-    let cycles = ref 0 in
     let cycle () =
       incr cycles;
       Cyclesim.cycle sim
@@ -33,8 +36,7 @@ module Make (C : Config.S) (Memory : Memory.S) (Source : Source.S) = struct
     Helpers.pulse ~cycle i.reset;
     Helpers.pulse ~cycle i.new_program;
     let o = Cyclesim.outputs sim ~clock_edge:Before in
-    Source.load i.source o.source ~cycle program;
-    !cycles
+    Source.load i.source o.source ~cycle program
 
   let step (sim : Sim.t) ~read ~write =
     let i = Cyclesim.inputs sim in
@@ -52,24 +54,16 @@ module Make (C : Config.S) (Memory : Memory.S) (Source : Source.S) = struct
     Cyclesim.cycle sim;
     if output then write byte
 
-  let execute (sim : Sim.t) ~read ~write program =
+  let execute (sim : Sim.t) ~read ~write ~load_cycles ~execute_cycles program =
     let o = Cyclesim.outputs sim in
-    let start = Unix.gettimeofday () in
-    let load_cycles = load sim program in
+    load sim ~cycles:load_cycles program;
     (Cyclesim.inputs sim).step := Bits.vdd;
-    let execute_cycles = ref 0 in
     while not (Bits.to_bool !(o.halted)) do
       step sim ~read ~write;
       incr execute_cycles
     done;
     if Bits.to_bool !(o.invalid_program) then Error Unmatched_brackets
-    else
-      Ok
-        {
-          Stats.load_cycles;
-          execute_cycles = !execute_cycles;
-          seconds = Unix.gettimeofday () -. start;
-        }
+    else Ok ()
 
   let run ?vcd_path ~read ~write source =
     let program = parse source in
@@ -77,13 +71,26 @@ module Make (C : Config.S) (Memory : Memory.S) (Source : Source.S) = struct
       Error (Program_too_large C.program_capacity)
     else
       let sim = Sim.create (Cpu.create program) in
+      let start = Unix.gettimeofday () in
+      let load_cycles = ref 0 in
+      let execute_cycles = ref 0 in
+      let stats () =
+        {
+          Stats.load_cycles = !load_cycles;
+          execute_cycles = !execute_cycles;
+          seconds = Unix.gettimeofday () -. start;
+        }
+      in
+      let execute sim =
+        execute sim ~read ~write ~load_cycles ~execute_cycles program
+      in
       match
         match vcd_path with
-        | None -> execute sim ~read ~write program
+        | None -> execute sim
         | Some path ->
-            Out_channel.with_open_bin path (fun ch ->
-                execute (Vcd.wrap ch sim) ~read ~write program)
+            Out_channel.with_open_bin path (fun ch -> execute (Vcd.wrap ch sim))
       with
-      | result -> result
-      | exception End_of_input_reached -> Error End_of_input
+      | result -> Result.map stats result
+      | exception Sys.Break -> Error (Interrupted (stats ()))
+      | exception End_of_input_reached -> Error (End_of_input (stats ()))
 end
