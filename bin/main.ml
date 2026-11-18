@@ -1,6 +1,6 @@
 module Config = Bf_caml.Config.Make (struct
-  let max_program_size = 256
-  let tape_length = 16
+  let max_program_size = 32768
+  let tape_length = 32768
 end)
 
 module Memory = Bf_caml.Ram_memory
