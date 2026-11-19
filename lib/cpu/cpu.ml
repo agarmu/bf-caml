@@ -32,6 +32,7 @@ struct
       halted : 'a;
       pointer : 'a; [@bits pointer_bits]
       current_cell : 'a; [@bits 8]
+      clearing : 'a;
       invalid_program : 'a;
       input_needed : 'a;
       output_valid : 'a;
@@ -129,6 +130,7 @@ struct
       halted = brackets.ready &: program.halted |: brackets.invalid_program;
       pointer = tape.pointer;
       current_cell = tape.cell;
+      clearing = tape.clearing;
       invalid_program = brackets.invalid_program;
       input_needed = issued Input;
       output_valid = issued Output;

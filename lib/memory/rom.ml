@@ -8,4 +8,5 @@ let create ~clock ~reset ~data_bits ~contents ~address =
   {
     Memory.data = mux read_address cells;
     ready = address ==: read_address &: ~:reset;
+    clearing = gnd;
   }

@@ -18,6 +18,7 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
       pointer : 'a; [@bits pointer_bits]
       cell : 'a; [@bits 8]
       ready : 'a;
+      clearing : 'a;
       output_valid : 'a;
     }
     [@@deriving hardcaml]
@@ -54,6 +55,7 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
       Output.pointer;
       cell;
       ready;
+      clearing = memory.clearing;
       output_valid = enable &: ~:reset &: is Output;
     }
 end

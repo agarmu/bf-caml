@@ -43,4 +43,4 @@ let create ~address_bits ~clear ~clock ~reset ~address ~write_enable ~write_data
   let ready =
     read_ready spec ~initialized ~address ~write_enable ~reset ~clear
   in
-  { Memory.data; ready }
+  { Memory.data; ready; clearing = ~:initialized }
