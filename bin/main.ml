@@ -18,12 +18,20 @@ let write byte =
   output_char stdout byte;
   flush stdout
 
+let read =
+  let ended = ref false in
+  fun () ->
+    match In_channel.input_char stdin with
+    | Some byte -> Some byte
+    | None when !ended -> None
+    | None ->
+        ended := true;
+        Some '\004'
+
 let run ~rom path =
   match
     (if rom then Rom.run else Loaded.run)
-      ~vcd_path:"cell.vcd"
-      ~read:(fun () -> In_channel.input_char stdin)
-      ~write (read_source path)
+      ~vcd_path:"cell.vcd" ~read ~write (read_source path)
   with
   | Ok stats -> prerr_endline (Bf_caml.Simulation.Stats.to_string stats)
   | Error (Bf_caml.Simulation.Program_too_large capacity) ->
@@ -31,6 +39,9 @@ let run ~rom path =
       exit 1
   | Error Bf_caml.Simulation.Unmatched_brackets ->
       prerr_endline "error: unmatched brackets";
+      exit 1
+  | Error Bf_caml.Simulation.End_of_input ->
+      prerr_endline "\nerror: end of input";
       exit 1
 
 let () =

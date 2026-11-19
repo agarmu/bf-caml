@@ -1,6 +1,8 @@
 open Hardcaml
 
-type error = Program_too_large of int | Unmatched_brackets
+type error = Program_too_large of int | Unmatched_brackets | End_of_input
+
+exception End_of_input_reached
 
 module Stats = struct
   type t = { load_cycles : int; execute_cycles : int; seconds : float }
@@ -40,7 +42,11 @@ module Make (C : Config.S) (Memory : Memory.S) (Source : Source.S) = struct
     Cyclesim.cycle_before_clock_edge sim;
     i.input_ready := !(o.input_needed);
     if Bits.to_bool !(o.input_needed) then
-      i.input_byte := Bits.of_char (Option.value (read ()) ~default:'\000');
+      i.input_byte :=
+        Bits.of_char
+          (match read () with
+          | Some byte -> byte
+          | None -> raise End_of_input_reached);
     let output = Bits.to_bool !(o.output_valid) in
     let byte = Bits.to_char !(o.output_byte) in
     Cyclesim.cycle sim;
@@ -71,9 +77,13 @@ module Make (C : Config.S) (Memory : Memory.S) (Source : Source.S) = struct
       Error (Program_too_large C.program_capacity)
     else
       let sim = Sim.create (Cpu.create program) in
-      match vcd_path with
-      | None -> execute sim ~read ~write program
-      | Some path ->
-          Out_channel.with_open_bin path (fun ch ->
-              execute (Vcd.wrap ch sim) ~read ~write program)
+      match
+        match vcd_path with
+        | None -> execute sim ~read ~write program
+        | Some path ->
+            Out_channel.with_open_bin path (fun ch ->
+                execute (Vcd.wrap ch sim) ~read ~write program)
+      with
+      | result -> result
+      | exception End_of_input_reached -> Error End_of_input
 end
