@@ -1,6 +1,8 @@
 open Hardcaml
 
 type output = { data : Signal.t; ready : Signal.t; clearing : Signal.t }
+[@@deriving fields ~getters]
+
 type read = address:Signal.t -> output
 
 module type S = sig
