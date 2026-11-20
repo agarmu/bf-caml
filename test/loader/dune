@@ -1,0 +1,6 @@
+(library
+ (name test_loader)
+ (libraries bf_caml hardcaml)
+ (inline_tests)
+ (preprocess
+  (pps ppx_jane)))
