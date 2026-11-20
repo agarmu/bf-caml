@@ -96,3 +96,18 @@ let%expect_test "random programs match the reference" =
 let%expect_test "random unbalanced programs are rejected like the reference" =
   compare_with_reference ~balanced:false;
   [%expect {| checked 100 programs |}]
+
+let%expect_test "programs over capacity are rejected like the reference" =
+  List.iter
+    (fun size ->
+      let source = String.make size '+' in
+      Printf.printf "%d: cpu %s, reference %s\n" size
+        (show (simulate ~input:"" source))
+        (Option.fold ~none:"did not halt" ~some:show
+           (interpret ~input:"" source)))
+    [ Config.program_capacity; Config.program_capacity + 1 ];
+  [%expect
+    {|
+    63: cpu Halted "", reference Halted ""
+    64: cpu Program_too_large "", reference Program_too_large ""
+    |}]
