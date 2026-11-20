@@ -10,6 +10,7 @@ struct
 
   let program_bits = C.program_bits
   let pointer_bits = C.pointer_bits
+  let instruction_count_bits = 32
 
   module Input = struct
     type 'a t = {
@@ -32,6 +33,9 @@ struct
       pointer : 'a; [@bits pointer_bits]
       current_cell : 'a; [@bits 8]
       clearing : 'a;
+      tape_ready : 'a;
+      retired : 'a;
+      instruction_count : 'a; [@bits instruction_count_bits]
       invalid_program : 'a;
       program_too_large : 'a;
       input : 'a Stream.Byte.Sink.t; [@rtlprefix "input_"]
@@ -75,7 +79,7 @@ struct
     let blocked kind ready = Instruction.is opcode kind &: ~:ready in
     ~:(blocked Input inputs.input.valid |: blocked Output inputs.output.ready)
 
-  let execute (inputs : _ Input.t) ~reset ~running
+  let execute ?inspect (inputs : _ Input.t) ~reset ~running ~inspecting
       (program : _ Program.Output.t) =
     let cell = wire 8 in
     let cell_ready = wire 1 in
@@ -88,19 +92,19 @@ struct
     let opcode = instruction.value.fetched.opcode in
     let step = instruction.valid &: ready in
     let tape =
-      Tape.create ~clock:inputs.clock ~reset:inputs.reset
+      Tape.create ?inspect ~clock:inputs.clock ~reset:inputs.reset
         { Tape.Input.enable = step; opcode; input_byte = inputs.input.data }
     in
     cell <== tape.cell;
-    cell_ready <== tape.ready;
-    ready <== (running &: io_ready inputs opcode);
+    cell_ready <== (tape.ready &: ~:inspecting);
+    ready <== (running &: tape.ready &: io_ready inputs opcode);
     (instruction, tape, step)
 
   let jumps ~opcode ~cell =
     let is = Instruction.is opcode in
     is Loop_start &: (cell ==:. 0) |: (is Loop_end &: (cell <>:. 0))
 
-  let create instructions (inputs : _ Input.t) =
+  let create ?inspect instructions (inputs : _ Input.t) =
     let clock = inputs.clock in
     let reset = inputs.reset |: inputs.new_program in
     let source, source_outputs =
@@ -109,17 +113,30 @@ struct
     let step = wire 1 in
     let jump = wire 1 in
     let program, brackets = fetch ~clock ~reset source ~step ~jump in
-    let running =
-      inputs.step &: brackets.ready &: ~:(program.halted) &: ~:reset
+    let inspecting =
+      match inspect with
+      | None -> gnd
+      | Some (read : _ With_valid.t) -> read.valid
     in
-    let instruction, tape, executed = execute inputs ~reset ~running program in
+    let running =
+      inputs.step &: brackets.ready &: ~:(program.halted)
+      &: ~:(reset |: inspecting)
+    in
+    let instruction, tape, executed =
+      execute ?inspect inputs ~reset ~running ~inspecting program
+    in
     let { Pipeline.Execute_data.fetched = { pc; opcode }; cell } =
       instruction.value
+    in
+    let instruction_count =
+      reg_fb (Reg_spec.create ~clock ~clear:reset ())
+        ~width:instruction_count_bits ~enable:executed ~f:(fun count ->
+          count +:. 1)
     in
     step <== executed;
     jump <== (executed &: jumps ~opcode ~cell);
     let issued kind =
-      running &: instruction.valid &: Instruction.is opcode kind
+      running &: tape.ready &: instruction.valid &: Instruction.is opcode kind
     in
     {
       Output.pc = mux2 instruction.valid pc program.pc;
@@ -132,6 +149,9 @@ struct
       pointer = tape.pointer;
       current_cell = tape.cell;
       clearing = tape.clearing;
+      tape_ready = tape.ready;
+      retired = executed;
+      instruction_count;
       invalid_program = brackets.invalid_program;
       program_too_large = source.too_large;
       input = { ready = issued Input };

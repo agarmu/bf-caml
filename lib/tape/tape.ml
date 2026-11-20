@@ -26,7 +26,7 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
 
   let step ~up value = mux2 up (value +:. 1) (value -:. 1)
 
-  let create ~clock ~reset (inputs : _ Input.t) =
+  let create ?inspect ~clock ~reset (inputs : _ Input.t) =
     let is = Instruction.is inputs.opcode in
     let ready = wire 1 in
     let enable = inputs.enable &: ready in
@@ -43,9 +43,15 @@ module Make_with_memory (C : Config.S) (Memory : Memory.S) = struct
     let decrement = is Decrement in
     let input = is Input in
     let write_data = mux2 input inputs.input_byte (step ~up:increment cell) in
+    let address =
+      match inspect with
+      | None -> pointer
+      | Some (inspect : _ With_valid.t) ->
+          mux2 inspect.valid inspect.value pointer
+    in
     let memory =
       Memory.create ~address_bits:pointer_bits ~clear:reset ~clock ~reset
-        ~address:pointer
+        ~address
         ~write_enable:(enable &: (increment |: decrement |: input))
         ~write_data
     in

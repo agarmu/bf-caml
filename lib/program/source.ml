@@ -31,7 +31,7 @@ module type S = sig
     unit
 end
 
-module Loaded (C : Config.S) (Memory : Memory.S) : S = struct
+module Loaded (C : Config.S) (Memory : Memory.S) = struct
   type nonrec t = t
 
   module Loader = Loader.Make (C)
@@ -70,7 +70,7 @@ module Loaded (C : Config.S) (Memory : Memory.S) : S = struct
     pulse ~cycle inputs.finish
 end
 
-module Rom (C : Config.S) (Memory : Memory.Read_only) : S = struct
+module Rom (C : Config.S) (Memory : Memory.Read_only) = struct
   type nonrec t = t
 
   module Input = Interface.Empty
