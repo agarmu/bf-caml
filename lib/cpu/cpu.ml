@@ -34,6 +34,7 @@ struct
       current_cell : 'a; [@bits 8]
       clearing : 'a;
       invalid_program : 'a;
+      program_too_large : 'a;
       input_needed : 'a;
       output_valid : 'a;
       output_byte : 'a; [@bits 8]
@@ -127,11 +128,14 @@ struct
       opcode =
         Instruction.Opcode.Of_signal.mux2 instruction.valid opcode
           program.opcode;
-      halted = brackets.ready &: program.halted |: brackets.invalid_program;
+      halted =
+        brackets.ready &: program.halted |: brackets.invalid_program
+        |: source.too_large;
       pointer = tape.pointer;
       current_cell = tape.cell;
       clearing = tape.clearing;
       invalid_program = brackets.invalid_program;
+      program_too_large = source.too_large;
       input_needed = issued Input;
       output_valid = issued Output;
       output_byte = cell;

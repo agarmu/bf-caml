@@ -80,39 +80,38 @@ module Make (C : Config.S) (Memory : Memory.S) (Source : Source.S) = struct
       step sim ~read ~write;
       incr counter
     done;
-    if Bits.to_bool !(o.invalid_program) then Error Unmatched_brackets
+    if Bits.to_bool !(o.program_too_large) then
+      Error (Program_too_large C.program_capacity)
+    else if Bits.to_bool !(o.invalid_program) then Error Unmatched_brackets
     else Ok ()
 
   let run ?vcd_path ?max_cycles ~read ~write source =
     let program = parse source in
-    if List.length program > C.program_capacity then
-      Error (Program_too_large C.program_capacity)
-    else
-      let sim = Sim.create (Cpu.create program) in
-      let start = Unix.gettimeofday () in
-      let load_cycles = ref 0 in
-      let clear_cycles = ref 0 in
-      let execute_cycles = ref 0 in
-      let stats () =
-        {
-          Stats.load_cycles = !load_cycles;
-          clear_cycles = !clear_cycles;
-          execute_cycles = !execute_cycles;
-          seconds = Unix.gettimeofday () -. start;
-        }
-      in
-      let execute sim =
-        execute sim ~max_cycles ~read ~write ~load_cycles ~clear_cycles
-          ~execute_cycles program
-      in
-      match
-        match vcd_path with
-        | None -> execute sim
-        | Some path ->
-            Out_channel.with_open_bin path (fun ch -> execute (Vcd.wrap ch sim))
-      with
-      | result -> Result.map stats result
-      | exception Sys.Break -> Error (Interrupted (stats ()))
-      | exception Cycle_limit_reached -> Error (Cycle_limit (stats ()))
-      | exception End_of_input_reached -> Error (End_of_input (stats ()))
+    let sim = Sim.create (Cpu.create program) in
+    let start = Unix.gettimeofday () in
+    let load_cycles = ref 0 in
+    let clear_cycles = ref 0 in
+    let execute_cycles = ref 0 in
+    let stats () =
+      {
+        Stats.load_cycles = !load_cycles;
+        clear_cycles = !clear_cycles;
+        execute_cycles = !execute_cycles;
+        seconds = Unix.gettimeofday () -. start;
+      }
+    in
+    let execute sim =
+      execute sim ~max_cycles ~read ~write ~load_cycles ~clear_cycles
+        ~execute_cycles program
+    in
+    match
+      match vcd_path with
+      | None -> execute sim
+      | Some path ->
+          Out_channel.with_open_bin path (fun ch -> execute (Vcd.wrap ch sim))
+    with
+    | result -> Result.map stats result
+    | exception Sys.Break -> Error (Interrupted (stats ()))
+    | exception Cycle_limit_reached -> Error (Cycle_limit (stats ()))
+    | exception End_of_input_reached -> Error (End_of_input (stats ()))
 end

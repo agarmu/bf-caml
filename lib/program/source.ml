@@ -6,6 +6,7 @@ type t = {
   load : Signal.t;
   program_size : Signal.t;
   finished : Signal.t;
+  too_large : Signal.t;
   read : Memory.read;
 }
 
@@ -51,6 +52,7 @@ module Loaded (C : Config.S) (Memory : Memory.S) : S = struct
         load = loader.load;
         program_size = loader.program_size;
         finished = loader.finished;
+        too_large = loader.too_large;
         read;
       },
       { Output.byte_ready = loader.byte_ready } )
@@ -73,12 +75,13 @@ module Rom (C : Config.S) : S = struct
   module Output = Interface.Empty
 
   let create program ~clock ~reset _ =
-    let size = List.length program in
-    if size > C.program_capacity then invalid_arg "program too large for ROM";
+    let too_large = List.length program > C.program_capacity in
+    let program = if too_large then [] else program in
     ( {
         load = gnd;
-        program_size = of_int ~width:C.program_bits size;
-        finished = vdd;
+        program_size = of_int ~width:C.program_bits (List.length program);
+        finished = of_bool (not too_large);
+        too_large = of_bool too_large;
         read =
           Rom.create ~clock ~reset ~data_bits:Instruction.bits
             ~contents:(List.map Instruction.encode program);

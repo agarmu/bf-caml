@@ -54,8 +54,9 @@ let send_all sim bytes =
   String.to_seq bytes |> Seq.filter_map (send sim) |> String.of_seq
 
 let status sim =
-  Printf.printf "size=%d finished=%d byte_ready=%d\n" (get sim "program_size")
-    (get sim "finished") (get sim "byte_ready")
+  Printf.printf "size=%d finished=%d too_large=%d byte_ready=%d\n"
+    (get sim "program_size") (get sim "finished") (get sim "too_large")
+    (get sim "byte_ready")
 
 let fresh () =
   let sim = create () in
@@ -67,19 +68,36 @@ let%expect_test "loads only instruction bytes, in order" =
   print_endline (send_all sim "a+b-c[d]e.,<> \n!");
   pulse sim "finish";
   status sim;
-  [%expect {|
+  [%expect
+    {|
     +-[].,<>
-    size=8 finished=1 byte_ready=0
+    size=8 finished=1 too_large=0 byte_ready=0
     |}]
 
-let%expect_test "finishes automatically at capacity" =
+let%expect_test "a full program can still finish" =
+  let sim = fresh () in
+  Printf.printf "loaded %d\n"
+    (String.length (send_all sim (String.make 15 '+')));
+  pulse sim "finish";
+  status sim;
+  [%expect
+    {|
+    loaded 15
+    size=15 finished=1 too_large=0 byte_ready=0
+    |}]
+
+let%expect_test "an instruction past capacity marks the program too large" =
   let sim = fresh () in
   Printf.printf "loaded %d of 20\n"
     (String.length (send_all sim (String.make 20 '+')));
   status sim;
-  [%expect {|
+  pulse sim "finish";
+  status sim;
+  [%expect
+    {|
     loaded 15 of 20
-    size=15 finished=1 byte_ready=0
+    size=15 finished=0 too_large=1 byte_ready=1
+    size=15 finished=0 too_large=1 byte_ready=1
     |}]
 
 let%expect_test "nothing loads after finishing" =
@@ -90,7 +108,7 @@ let%expect_test "nothing loads after finishing" =
   status sim;
   [%expect {|
     ""
-    size=2 finished=1 byte_ready=0
+    size=2 finished=1 too_large=0 byte_ready=0
     |}]
 
 let%expect_test "reset starts a fresh program" =
@@ -102,5 +120,5 @@ let%expect_test "reset starts a fresh program" =
   status sim;
   [%expect {|
     []
-    size=2 finished=0 byte_ready=1
+    size=2 finished=0 too_large=0 byte_ready=1
     |}]
