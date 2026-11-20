@@ -5,5 +5,30 @@ module Config = Config.Make (struct
   let tape_length = 16
 end)
 
-module Simulation =
-  Simulation.Make (Config) (Ram_memory) (Source.Loaded (Config) (Ram_memory))
+module Banked =
+  Banked_memory.Make
+    (Ram_memory)
+    (struct
+      let lanes = 4
+    end)
+
+module Loaded (M : Memory.S) =
+  Simulation.Make (Config) (M) (Source.Loaded (Config) (M))
+
+module Rom (M : Memory.S) = Simulation.Make (Config) (M) (Source.Rom (Config))
+module Simulation = Loaded (Ram_memory)
+
+let memories =
+  [
+    ("ram", (module Ram_memory : Memory.S));
+    ("banked ram", (module Banked : Memory.S));
+    ("register", (module Register_memory : Memory.S));
+  ]
+
+let setups =
+  List.concat_map
+    (fun (name, (module M : Memory.S)) ->
+      let module L = Loaded (M) in
+      let module R = Rom (M) in
+      [ (name ^ " loaded", L.run); (name ^ " rom", R.run) ])
+    memories

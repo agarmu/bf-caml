@@ -24,10 +24,10 @@ let outcome : (_, Bf_caml.Simulation.error) result -> Reference.outcome =
   | Error (Program_too_large _) -> Program_too_large
   | Error (Cycle_limit _ | Interrupted _) -> failwith "simulation did not halt"
 
-let simulate ~input source =
+let simulate run ~input source =
   let result, output =
     with_io ~input (fun ~read ~write ->
-        Simulation.run ~max_cycles:100_000 ~read ~write source)
+        run ?vcd_path:None ?max_cycles:(Some 100_000) ~read ~write source)
   in
   (outcome result, output)
 
@@ -72,42 +72,46 @@ let show (outcome, output) =
 let agrees (outcome, output) (outcome', output') =
   Reference.equal_outcome outcome outcome' && String.equal output output'
 
+let check ~input source =
+  let expected = interpret ~input source in
+  Option.iter
+    (fun expected ->
+      List.iter
+        (fun (name, run) ->
+          let actual = simulate run ~input source in
+          if not (agrees actual expected) then
+            Printf.printf "%s: %S with input %S: got %s, expected %s\n" name
+              source input (show actual) (show expected))
+        setups)
+    expected;
+  expected
+
 let compare_with_reference ~balanced =
   let state = Random.State.make [| 0 |] in
   let checked = ref 0 in
   for _ = 1 to 100 do
     let source = program ~balanced state in
     let input = input state in
-    match interpret ~input source with
-    | None -> ()
-    | Some expected ->
-        incr checked;
-        let actual = simulate ~input source in
-        if not (agrees actual expected) then
-          Printf.printf "%S with input %S: got %s, expected %s\n" source input
-            (show actual) (show expected)
+    if Option.is_some (check ~input source) then incr checked
   done;
-  Printf.printf "checked %d programs" !checked
+  Printf.printf "checked %d programs on %d setups" !checked (List.length setups)
 
 let%expect_test "random programs match the reference" =
   compare_with_reference ~balanced:true;
-  [%expect {| checked 88 programs |}]
+  [%expect {| checked 88 programs on 6 setups |}]
 
 let%expect_test "random unbalanced programs are rejected like the reference" =
   compare_with_reference ~balanced:false;
-  [%expect {| checked 100 programs |}]
+  [%expect {| checked 100 programs on 6 setups |}]
 
 let%expect_test "programs over capacity are rejected like the reference" =
   List.iter
     (fun size ->
-      let source = String.make size '+' in
-      Printf.printf "%d: cpu %s, reference %s\n" size
-        (show (simulate ~input:"" source))
+      Printf.printf "%d: %s\n" size
         (Option.fold ~none:"did not halt" ~some:show
-           (interpret ~input:"" source)))
+           (check ~input:"" (String.make size '+'))))
     [ Config.program_capacity; Config.program_capacity + 1 ];
-  [%expect
-    {|
-    63: cpu Halted "", reference Halted ""
-    64: cpu Program_too_large "", reference Program_too_large ""
+  [%expect {|
+    63: Halted ""
+    64: Program_too_large ""
     |}]
