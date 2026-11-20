@@ -115,3 +115,10 @@ let%expect_test "programs over capacity are rejected like the reference" =
     64: Halted ""
     65: Program_too_large ""
     |}]
+
+let%expect_test "a full program can skip a loop ending in the last slot" =
+  let source = String.make (Config.program_capacity - 2) '>' ^ "[]" in
+  Option.iter
+    (fun result -> print_endline (show result))
+    (check ~input:"" source);
+  [%expect {| Halted "" |}]

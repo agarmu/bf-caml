@@ -61,6 +61,8 @@ let%expect_test "RAM upload, exact stepping, paused tape reads, and runtime I/O"
   host.expect (packet 23 16 1 2);
   request 10 17 8 0;
   host.expect (packet 17 17 size 6);
+  request 10 37 16384 0;
+  host.expect (packet 17 37 size 6);
   request 7 18 1 0;
   host.expect (packet 16 18 size 0 @ packet 20 0 size 0);
   request 6 19 0 0;
