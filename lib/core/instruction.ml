@@ -31,6 +31,7 @@ let to_char = function
   | Loop_end -> ']'
 
 let of_char c = List.find_opt (fun op -> to_char op = c) all
+let parse source = String.to_seq source |> Seq.filter_map of_char |> List.of_seq
 let encode = Opcode.to_raw %> Opcode.Of_signal.of_enum
 
 let decode byte =

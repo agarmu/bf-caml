@@ -30,8 +30,7 @@ module Make (C : Config.S) (Memory : Memory.S) (Source : Source.S) = struct
   module Cpu = Cpu.Make_with_source (C) (Memory) (Source)
   module Sim = Cyclesim.With_interface (Cpu.Input) (Cpu.Output)
 
-  let parse source =
-    String.to_seq source |> Seq.filter_map Instruction.of_char |> List.of_seq
+  let parse = Instruction.parse
 
   let load (sim : Sim.t) ~cycles program =
     let i = Cyclesim.inputs sim in
