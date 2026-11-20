@@ -46,21 +46,22 @@ module Make (C : Config.S) (Memory : Memory.S) (Source : Source.S) = struct
     let o = Cyclesim.outputs sim ~clock_edge:Before in
     Source.load i.source o.source ~cycle program
 
+  let supply_input (i : Bits.t ref Cpu.Input.t) ~read =
+    i.input_ready := Bits.vdd;
+    i.input_byte :=
+      Bits.of_char
+        (match read () with
+        | Some byte -> byte
+        | None -> raise End_of_input_reached)
+
   let step (sim : Sim.t) ~read ~write =
     let i = Cyclesim.inputs sim in
     let o = Cyclesim.outputs sim ~clock_edge:Before in
-    Cyclesim.cycle_before_clock_edge sim;
-    i.input_ready := !(o.input_needed);
-    if Bits.to_bool !(o.input_needed) then
-      i.input_byte :=
-        Bits.of_char
-          (match read () with
-          | Some byte -> byte
-          | None -> raise End_of_input_reached);
-    let output = Bits.to_bool !(o.output_valid) in
-    let byte = Bits.to_char !(o.output_byte) in
+    let supplied = Bits.to_bool !(i.input_ready) in
     Cyclesim.cycle sim;
-    if output then write byte
+    i.input_ready := Bits.gnd;
+    if Bits.to_bool !(o.input_needed) && not supplied then supply_input i ~read;
+    if Bits.to_bool !(o.output_valid) then write (Bits.to_char !(o.output_byte))
 
   let check_limit ~max_cycles cycles =
     if Option.exists (fun limit -> cycles >= limit) max_cycles then
