@@ -1,0 +1,3 @@
+(library
+ (name serial_sim)
+ (libraries bf_caml hardcaml))

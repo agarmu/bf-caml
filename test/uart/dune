@@ -1,6 +1,6 @@
 (library
  (name test_uart)
- (libraries bf_caml hardcaml)
+ (libraries bf_caml hardcaml serial_sim)
  (inline_tests)
  (preprocess
   (pps ppx_jane)))
