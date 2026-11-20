@@ -46,17 +46,18 @@ let interpret ~input source =
   | Some outcome, output -> Some (outcome, output)
   | None, _ -> None
 
-let program state =
+let program ~balanced state =
   let buffer = Buffer.create 32 in
   let add = Buffer.add_char buffer in
   let rec go remaining depth =
-    if remaining = 0 then Buffer.add_string buffer (String.make depth ']')
+    if remaining = 0 then (
+      if balanced then Buffer.add_string buffer (String.make depth ']'))
     else
       match Random.State.int state 10 with
       | 0 ->
           add '[';
           go (remaining - 1) (depth + 1)
-      | 1 when depth > 0 ->
+      | 1 when depth > 0 || not balanced ->
           add ']';
           go (remaining - 1) (depth - 1)
       | _ ->
@@ -78,11 +79,11 @@ let show (outcome, output) =
 let agrees (outcome, output) (outcome', output') =
   Reference.equal_outcome outcome outcome' && String.equal output output'
 
-let%expect_test "random programs match the reference" =
+let compare_with_reference ~balanced =
   let state = Random.State.make [| 0 |] in
   let checked = ref 0 in
   for _ = 1 to 100 do
-    let source = program state in
+    let source = program ~balanced state in
     let input = input state in
     match interpret ~input source with
     | None -> ()
@@ -93,5 +94,12 @@ let%expect_test "random programs match the reference" =
           Printf.printf "%S with input %S: got %s, expected %s\n" source input
             (show actual) (show expected)
   done;
-  Printf.printf "checked %d programs" !checked;
+  Printf.printf "checked %d programs" !checked
+
+let%expect_test "random programs match the reference" =
+  compare_with_reference ~balanced:true;
   [%expect {| checked 88 programs |}]
+
+let%expect_test "random unbalanced programs are rejected like the reference" =
+  compare_with_reference ~balanced:false;
+  [%expect {| checked 100 programs |}]
