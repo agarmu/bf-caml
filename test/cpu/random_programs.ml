@@ -1,13 +1,5 @@
 open Bf_caml
-
-module Config = Config.Make (struct
-  let max_program_size = 64
-  let tape_length = 16
-end)
-
-module Sim =
-  Simulation.Make (Config) (Ram_memory) (Source.Loaded (Config) (Ram_memory))
-
+open Setup
 module Interpreter = Reference.Make (Config)
 
 let reader input =
@@ -24,7 +16,8 @@ let with_io ~input run =
   let result = run ~read:(reader input) ~write:(Buffer.add_char output) in
   (result, Buffer.contents output)
 
-let outcome : (_, Simulation.error) result -> Reference.outcome = function
+let outcome : (_, Bf_caml.Simulation.error) result -> Reference.outcome =
+  function
   | Ok _ -> Halted
   | Error (End_of_input _) -> End_of_input
   | Error Unmatched_brackets -> Unmatched_brackets
@@ -34,14 +27,14 @@ let outcome : (_, Simulation.error) result -> Reference.outcome = function
 let simulate ~input source =
   let result, output =
     with_io ~input (fun ~read ~write ->
-        Sim.run ~max_cycles:100_000 ~read ~write source)
+        Simulation.run ~max_cycles:100_000 ~read ~write source)
   in
   (outcome result, output)
 
 let interpret ~input source =
   match
     with_io ~input (fun ~read ~write ->
-        Interpreter.run ~max_steps:2_000 ~read ~write (Sim.parse source))
+        Interpreter.run ~max_steps:2_000 ~read ~write (Simulation.parse source))
   with
   | Some outcome, output -> Some (outcome, output)
   | None, _ -> None
