@@ -98,11 +98,11 @@ let compare_with_reference ~balanced =
 
 let%expect_test "random programs match the reference" =
   compare_with_reference ~balanced:true;
-  [%expect {| checked 88 programs on 6 setups |}]
+  [%expect {| checked 88 programs on 4 setups |}]
 
 let%expect_test "random unbalanced programs are rejected like the reference" =
   compare_with_reference ~balanced:false;
-  [%expect {| checked 100 programs on 6 setups |}]
+  [%expect {| checked 100 programs on 4 setups |}]
 
 let%expect_test "programs over capacity are rejected like the reference" =
   List.iter

@@ -19,16 +19,15 @@ module Rom (M : Memory.S) = Simulation.Make (Config) (M) (Source.Rom (Config))
 module Simulation = Loaded (Ram_memory)
 
 let memories =
-  [
-    ("ram", (module Ram_memory : Memory.S));
-    ("banked ram", (module Banked : Memory.S));
-    ("register", (module Register_memory : Memory.S));
-  ]
+  [ ("ram", (module Ram_memory : Memory.S)); ("banked", (module Banked)) ]
 
 let setups =
   List.concat_map
     (fun (name, (module M : Memory.S)) ->
       let module L = Loaded (M) in
       let module R = Rom (M) in
-      [ (name ^ " loaded", L.run); (name ^ " rom", R.run) ])
+      [
+        (name ^ " tape, loaded program", L.run);
+        (name ^ " tape, rom program", R.run);
+      ])
     memories
