@@ -1,0 +1,6 @@
+(library
+ (name test_uart_client)
+ (libraries bf_caml)
+ (inline_tests)
+ (preprocess
+  (pps ppx_jane)))
