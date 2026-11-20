@@ -1,3 +1,8 @@
-(test
+(library
  (name test_bf_caml)
- (libraries bf_caml))
+ (libraries bf_caml hardcaml)
+ (inline_tests
+  (deps
+   (glob_files ../examples/*.bf)))
+ (preprocess
+  (pps ppx_jane)))
