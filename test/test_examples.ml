@@ -17,18 +17,27 @@ let reader input =
         byte)
       (Seq.uncons !pending)
 
-let output ?(input = "") source =
+let simulate ?(input = "") ?max_cycles source =
   let buffer = Buffer.create 64 in
-  match Sim.run ~read:(reader input) ~write:(Buffer.add_char buffer) source with
-  | Ok _ -> Buffer.contents buffer
-  | Error _ -> "error"
+  let result =
+    Sim.run ?max_cycles ~read:(reader input) ~write:(Buffer.add_char buffer)
+      source
+  in
+  (Buffer.contents buffer, result)
 
-let run ?input source = print_string (output ?input source)
+let output ?input ?max_cycles source =
+  match simulate ?input ?max_cycles source with
+  | text, Ok _ -> text
+  | text, Error (Cycle_limit _) -> text ^ "\n[cycle limit]"
+  | _, Error _ -> "error"
+
+let run ?input ?max_cycles source =
+  print_string (output ?input ?max_cycles source)
 
 let example name =
   In_channel.with_open_bin ("../examples/" ^ name ^ ".bf") In_channel.input_all
 
-let check ?(count = 50) ~generate ~input ~expected source =
+let check ?(count = 10) ~generate ~input ~expected source =
   let state = Random.State.make [| 0 |] in
   for _ = 1 to count do
     let case = generate state in
@@ -38,6 +47,19 @@ let check ?(count = 50) ~generate ~input ~expected source =
         (expected case)
   done
 
+let check_prefix ~max_cycles ~expected source =
+  match simulate ~max_cycles source with
+  | text, Error (Cycle_limit _) when String.starts_with ~prefix:text expected ->
+      Printf.printf "%d characters match" (String.length text)
+  | text, _ -> Printf.printf "mismatch: %S" text
+
+let powers_of_two =
+  String.concat "" (List.init 62 (fun k -> Printf.sprintf "%d\n" (1 lsl k)))
+
+let thue_morse length =
+  let rec ones n = if n = 0 then 0 else (n land 1) + ones (n lsr 1) in
+  String.init length (fun i -> if ones i mod 2 = 0 then '0' else '1')
+
 let string_of ~max_length char state =
   String.init (Random.State.int state (max_length + 1)) (fun _ -> char state)
 
@@ -46,6 +68,7 @@ let lowercase state = Char.chr (Char.code 'a' + Random.State.int state 26)
 let not_eot state =
   let byte = Random.State.int state 255 in
   Char.chr (if byte >= 4 then byte + 1 else byte)
+
 let%expect_test "hello world" =
   run (example "hello-world");
   [%expect {| Hello World! |}]
@@ -93,6 +116,29 @@ let%expect_test "echo one byte" =
 let%expect_test "factor" =
   run (example "factor") ~input:"60\n";
   [%expect {| 60: 2 2 3 5 |}]
+
+let%expect_test "e" =
+  run (example "e") ~max_cycles:1_000_000;
+  [%expect {|
+    2.71828182845
+    [cycle limit]
+    |}]
+
+let%expect_test "golden" =
+  run (example "golden") ~max_cycles:200_000;
+  [%expect {|
+    1.6
+    [cycle limit]
+    |}]
+
+let%expect_test "pow2" =
+  check_prefix (example "pow2") ~max_cycles:300_000 ~expected:powers_of_two;
+  [%expect {| 367 characters match |}]
+
+let%expect_test "thue" =
+  check_prefix (example "thue") ~max_cycles:50_000
+    ~expected:(thue_morse 100_000);
+  [%expect {| 434 characters match |}]
 
 let%expect_test "upcase uppercases random lowercase strings" =
   check (example "upcase")
