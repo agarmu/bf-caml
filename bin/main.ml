@@ -25,11 +25,9 @@ let stop message stats code =
 let too_large capacity =
   fail (Printf.sprintf "error: program exceeds %d instructions" capacity)
 
-let simulate_direct target source =
+let simulate_direct target ?vcd_path source =
   let format = Simulation.Stats.to_string in
-  match
-    Machine.Direct.simulate target ~vcd_path:"cell.vcd" ~read ~write source
-  with
+  match Machine.Direct.simulate target ?vcd_path ~read ~write source with
   | Ok stats -> prerr_endline (format stats)
   | Error (Program_too_large capacity) -> too_large capacity
   | Error Unmatched_brackets -> fail "error: unmatched brackets"
@@ -37,9 +35,9 @@ let simulate_direct target source =
   | Error (Cycle_limit stats) -> stop "cycle limit reached" (format stats) 1
   | Error (End_of_input stats) -> stop "end of input" (format stats) 1
 
-let simulate_uart target source =
+let simulate_uart target ?vcd_path source =
   let format = Uart_simulation.format_stats in
-  match Uart_simulation.run target ~vcd_path:"cell.vcd" ~read ~write source with
+  match Uart_simulation.run target ?vcd_path ~read ~write source with
   | Ok stats -> prerr_endline (format stats)
   | Error (Program_too_large capacity) -> too_large capacity
   | Error (Client_error error) ->
@@ -71,7 +69,7 @@ let dump_rtl target ~direct ~clocks_per_bit ~output program =
   if output = "-" then Rtl.print Verilog circuit
   else Rtl.output ~output_mode:(To_file output) Verilog circuit
 
-let run memory banking direct clocks_per_bit rtl path =
+let run memory banking direct clocks_per_bit rtl vcd_path path =
   let target = { Machine.memory; banking } in
   let dump output program =
     dump_rtl target ~direct ~clocks_per_bit ~output program;
@@ -81,14 +79,13 @@ let run memory banking direct clocks_per_bit rtl path =
     match (rtl, path, memory) with
     | None, Some path, _ ->
         let simulate = if direct then simulate_direct else simulate_uart in
-        simulate target (read_source path);
+        simulate target ?vcd_path (read_source path);
         Ok ()
     | None, None, _ -> Error "a program file is required"
-    | Some output, _, Machine.Ram -> dump output []
+    | Some output, _, Machine.Ram | Some output, None, Machine.Rom ->
+        dump output []
     | Some output, Some path, Machine.Rom ->
         dump output (Instruction.parse (read_source path))
-    | Some _, None, Machine.Rom ->
-        Error "ROM RTL dumping requires a program file"
   with Sys_error message -> fail ("error: " ^ message)
 
 open Cmdliner
@@ -144,17 +141,27 @@ let rtl =
           "Emit Verilog to $(docv), or to standard output when $(docv) is \
            $(b,-).")
 
+let vcd =
+  Arg.(
+    value
+    & opt (some string) None
+    & info [ "dump-vcd" ] ~docv:"FILE"
+        ~doc:"Write simulation waveforms to $(docv).")
+
 let program =
   Arg.(
     value
     & pos 0 (some string) None
     & info [] ~docv:"PROGRAM.bf"
-        ~doc:"Brainfuck source file. Required for simulation and ROM RTL.")
+        ~doc:
+          "Brainfuck source file. Required for simulation and optional when \
+           dumping RTL with ROM.")
 
 let command =
   let term =
     Term.(
-      const run $ memory $ banking $ direct $ clocks_per_bit $ rtl $ program)
+      const run $ memory $ banking $ direct $ clocks_per_bit $ rtl $ vcd
+      $ program)
   in
   Cmd.v
     (Cmd.info "bf_caml" ~doc:"Simulate Brainfuck hardware or generate Verilog.")
