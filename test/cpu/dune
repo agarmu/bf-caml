@@ -1,6 +1,6 @@
 (library
  (name test_cpu)
- (libraries bf_caml)
+ (libraries bf_caml test_setups)
  (inline_tests)
  (preprocess
   (pps ppx_jane)))
