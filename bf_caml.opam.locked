@@ -29,9 +29,9 @@ depends: [
   "jst-config" {= "v0.17.0"}
   "linenoise" {= "1.5.1"}
   "num" {= "1.6"}
-  "ocaml" {= "5.5.1"}
+  "ocaml" {= "5.5.2"}
   "ocaml-compiler-libs" {= "v0.17.0"}
-  "ocaml-system" {= "5.5.1"}
+  "ocaml-system" {= "5.5.2"}
   "ocaml_intrinsics_kernel" {= "v0.17.3"}
   "ocamlfind" {= "1.9.9~preview"}
   "parsexp" {= "v0.17.0"}
