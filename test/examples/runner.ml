@@ -5,8 +5,14 @@ module Config = Config.Make (struct
   let tape_length = 1024
 end)
 
-module Sim =
-  Simulation.Make (Config) (Ram_memory) (Source.Loaded (Config) (Ram_memory))
+module Setups = Test_setups.Make (Config)
+
+let extremes =
+  List.filter
+    (fun (name, _) ->
+      List.mem name
+        [ "ram tape, ram program"; "banked tape, banked rom program" ])
+    Setups.all
 
 let reader input =
   let pending = ref (String.to_seq input) in
@@ -17,22 +23,51 @@ let reader input =
         byte)
       (Seq.uncons !pending)
 
-let simulate ?(input = "") ?max_cycles source =
+let simulate_on run ~input ?max_cycles source =
   let buffer = Buffer.create 64 in
   let result =
-    Sim.run ?max_cycles ~read:(reader input) ~write:(Buffer.add_char buffer)
-      source
+    run ?vcd_path:None ?max_cycles ~read:(reader input)
+      ~write:(Buffer.add_char buffer) source
   in
   (Buffer.contents buffer, result)
 
-let output ?input ?max_cycles source =
-  match simulate ?input ?max_cycles source with
+let render : _ * (_, Simulation.error) result -> string = function
   | text, Ok _ -> text
   | text, Error (Cycle_limit _) -> text ^ "\n[cycle limit]"
   | _, Error _ -> "error"
 
-let run ?input ?max_cycles source =
-  print_string (output ?input ?max_cycles source)
+let consistent ((text, result) as a) ((text', result') as b) =
+  match (result, result') with
+  | Error (Simulation.Cycle_limit _), Error (Simulation.Cycle_limit _) ->
+      String.starts_with ~prefix:text text'
+      || String.starts_with ~prefix:text' text
+  | _ -> render a = render b
+
+let simulate ?(setups = Setups.all) ?(input = "") ?max_cycles source =
+  let results =
+    List.map
+      (fun (name, run) -> (name, simulate_on run ~input ?max_cycles source))
+      setups
+  in
+  let shortest =
+    List.map snd results
+    |> List.fold_left
+         (fun a b ->
+           if String.length (fst b) < String.length (fst a) then b else a)
+         (snd (List.hd results))
+  in
+  List.iter
+    (fun (name, result) ->
+      if not (consistent result shortest) then
+        Printf.printf "%s differs: %S\n" name (render result))
+    results;
+  shortest
+
+let output ?setups ?input ?max_cycles source =
+  render (simulate ?setups ?input ?max_cycles source)
+
+let run ?setups ?input ?max_cycles source =
+  print_string (output ?setups ?input ?max_cycles source)
 
 let example name =
   In_channel.with_open_bin
@@ -49,8 +84,15 @@ let check ?(count = 10) ~generate ~input ~expected source =
         (expected case)
   done
 
-let check_prefix ~max_cycles ~expected source =
-  match simulate ~max_cycles source with
-  | text, Error (Cycle_limit _) when String.starts_with ~prefix:text expected ->
-      Printf.printf "%d characters match" (String.length text)
-  | text, _ -> Printf.printf "mismatch: %S" text
+let check_prefix ?(setups = Setups.all) ~max_cycles ~expected source =
+  let matched (name, run) =
+    match simulate_on run ~input:"" ~max_cycles source with
+    | text, Error (Simulation.Cycle_limit _)
+      when String.starts_with ~prefix:text expected ->
+        String.length text
+    | text, _ ->
+        Printf.printf "%s mismatch: %S\n" name text;
+        0
+  in
+  Printf.printf "%d characters match"
+    (List.fold_left min max_int (List.map matched setups))
