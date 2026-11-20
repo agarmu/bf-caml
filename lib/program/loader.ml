@@ -11,13 +11,16 @@ module Make (C : Config.S) = struct
   let capacity = C.program_capacity
 
   module Input = struct
-    type 'a t = { byte_valid : 'a; byte : 'a; [@bits 8] finish : 'a }
+    type 'a t = {
+      byte : 'a Stream.Byte.Source.t; [@rtlprefix "byte_"]
+      finish : 'a;
+    }
     [@@deriving hardcaml]
   end
 
   module Output = struct
     type 'a t = {
-      byte_ready : 'a;
+      byte : 'a Stream.Byte.Sink.t; [@rtlprefix "byte_"]
       load : 'a;
       opcode : 'a; [@bits Instruction.bits]
       program_size : 'a; [@bits program_bits]
@@ -33,11 +36,12 @@ module Make (C : Config.S) = struct
     let program_size = Always.Variable.reg spec ~width:program_bits in
     let loading = state.is Loading in
     let finished = state.is Finished in
-    let opcode = Instruction.decode inputs.byte in
-    let byte_ready = ~:reset &: ~:finished in
+    let opcode = Instruction.decode inputs.byte.data in
+    let byte = { Stream.Byte.Sink.ready = ~:reset &: ~:finished } in
     let instruction =
-      loading &: inputs.byte_valid &: byte_ready &: opcode.valid
-      &: ~:(inputs.finish)
+      loading
+      &: Stream.Byte.transfer inputs.byte byte
+      &: opcode.valid &: ~:(inputs.finish)
     in
     let full = program_size.value ==:. capacity in
     let load = instruction &: ~:full in
@@ -49,7 +53,7 @@ module Make (C : Config.S) = struct
           when_ (loading &: inputs.finish) [ state.set_next Finished ];
         ]);
     {
-      Output.byte_ready;
+      Output.byte;
       load;
       opcode = opcode.value;
       program_size = program_size.value;

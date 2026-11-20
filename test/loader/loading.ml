@@ -43,7 +43,7 @@ let opcode_char raw =
 
 let send sim byte =
   set sim "byte_valid" 1;
-  set sim "byte" (Char.code byte);
+  set sim "byte_data" (Char.code byte);
   Cyclesim.cycle sim;
   set sim "byte_valid" 0;
   if get ~clock_edge:Before sim "load" = 1 then

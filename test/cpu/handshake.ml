@@ -24,7 +24,7 @@ let run_until_halted sim =
       Cyclesim.cycle sim;
       if high ~clock_edge:Before sim "output_valid" then
         Buffer.add_char output
-          (Char.chr (get ~clock_edge:Before sim "output_byte"));
+          (Char.chr (get ~clock_edge:Before sim "output_data"));
       go (limit - 1))
   in
   go 10_000;
@@ -53,33 +53,33 @@ let%expect_test "output waits for output_ready" =
           set sim "output_ready" 0;
           cycles sim 200;
           let blocked =
-            Printf.sprintf "blocked: halted=%b output_valid=%b byte=%d\n"
+            Printf.sprintf "blocked: halted=%b output_valid=%b data=%d\n"
               (high sim "halted") (high sim "output_valid")
-              (get sim "output_byte")
+              (get sim "output_data")
           in
           blocked ^ Printf.sprintf "released: %S\n" (run_until_halted sim));
   [%expect
     {|
-    blocked: halted=false output_valid=true byte=1
+    blocked: halted=false output_valid=true data=1
     released: "\001\002"
     |}]
 
-let%expect_test "input waits for input_ready" =
+let%expect_test "input waits for input_valid" =
   everywhere (fun start ->
       match start ",." with
       | { Test_setups.sim = Sim sim; _ } ->
           set sim "step" 1;
           cycles sim 200;
           let blocked =
-            Printf.sprintf "blocked: halted=%b input_needed=%b\n"
-              (high sim "halted") (high sim "input_needed")
+            Printf.sprintf "blocked: halted=%b input_ready=%b\n"
+              (high sim "halted") (high sim "input_ready")
           in
-          set sim "input_byte" (Char.code 'x');
-          set sim "input_ready" 1;
+          set sim "input_data" (Char.code 'x');
+          set sim "input_valid" 1;
           blocked ^ Printf.sprintf "released: %S\n" (run_until_halted sim));
   [%expect
     {|
-    blocked: halted=false input_needed=true
+    blocked: halted=false input_ready=true
     released: "x"
     |}]
 

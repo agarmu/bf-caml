@@ -38,7 +38,8 @@ module Loaded (C : Config.S) (Memory : Memory.S) : S = struct
   module Input = Loader.Input
 
   module Output = struct
-    type 'a t = { byte_ready : 'a } [@@deriving hardcaml]
+    type 'a t = { byte : 'a Stream.Byte.Sink.t [@rtlprefix "byte_"] }
+    [@@deriving hardcaml]
   end
 
   let create _ ~clock ~reset inputs =
@@ -55,16 +56,14 @@ module Loaded (C : Config.S) (Memory : Memory.S) : S = struct
         too_large = loader.too_large;
         read;
       },
-      { Output.byte_ready = loader.byte_ready } )
+      { Output.byte = loader.byte } )
 
   let load (inputs : _ Input.t) (outputs : _ Output.t) ~cycle program =
-    let send op =
-      inputs.byte := Bits.of_char (Instruction.to_char op);
-      cycle ();
-      if not (Bits.to_bool !(outputs.byte_ready)) then
-        failwith "loader not ready for byte"
-    in
-    holding inputs.byte_valid (fun () -> List.iter send program);
+    List.iter
+      (fun op ->
+        Stream_sim.Byte.send ~cycle inputs.byte outputs.byte
+          (Bits.of_char (Instruction.to_char op)))
+      program;
     pulse ~cycle inputs.finish
 end
 

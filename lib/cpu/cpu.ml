@@ -18,9 +18,8 @@ struct
       new_program : 'a;
       source : 'a Source.Input.t;
       step : 'a;
-      input_byte : 'a; [@bits 8]
-      input_ready : 'a;
-      output_ready : 'a;
+      input : 'a Stream.Byte.Source.t; [@rtlprefix "input_"]
+      output : 'a Stream.Byte.Sink.t; [@rtlprefix "output_"]
     }
     [@@deriving hardcaml]
   end
@@ -35,9 +34,8 @@ struct
       clearing : 'a;
       invalid_program : 'a;
       program_too_large : 'a;
-      input_needed : 'a;
-      output_valid : 'a;
-      output_byte : 'a; [@bits 8]
+      input : 'a Stream.Byte.Sink.t; [@rtlprefix "input_"]
+      output : 'a Stream.Byte.Source.t; [@rtlprefix "output_"]
       source : 'a Source.Output.t;
     }
     [@@deriving hardcaml]
@@ -75,7 +73,7 @@ struct
 
   let io_ready (inputs : _ Input.t) opcode =
     let blocked kind ready = Instruction.is opcode kind &: ~:ready in
-    ~:(blocked Input inputs.input_ready |: blocked Output inputs.output_ready)
+    ~:(blocked Input inputs.input.valid |: blocked Output inputs.output.ready)
 
   let execute (inputs : _ Input.t) ~reset ~running
       (program : _ Program.Output.t) =
@@ -91,7 +89,7 @@ struct
     let step = instruction.valid &: ready in
     let tape =
       Tape.create ~clock:inputs.clock ~reset:inputs.reset
-        { Tape.Input.enable = step; opcode; input_byte = inputs.input_byte }
+        { Tape.Input.enable = step; opcode; input_byte = inputs.input.data }
     in
     cell <== tape.cell;
     cell_ready <== tape.ready;
@@ -136,9 +134,8 @@ struct
       clearing = tape.clearing;
       invalid_program = brackets.invalid_program;
       program_too_large = source.too_large;
-      input_needed = issued Input;
-      output_valid = issued Output;
-      output_byte = cell;
+      input = { ready = issued Input };
+      output = { valid = issued Output; data = cell };
       source = source_outputs;
     }
 end

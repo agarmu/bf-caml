@@ -40,28 +40,27 @@ module Make (C : Config.S) (Memory : Memory.S) (Source : Source.S) = struct
       Cyclesim.cycle sim
     in
     Cpu.Input.iter i ~f:(fun port -> port := Bits.zero (Bits.width !port));
-    i.output_ready := Bits.vdd;
+    i.output.ready := Bits.vdd;
     Helpers.pulse ~cycle i.reset;
     Helpers.pulse ~cycle i.new_program;
     let o = Cyclesim.outputs sim ~clock_edge:Before in
     Source.load i.source o.source ~cycle program
 
-  let supply_input (i : Bits.t ref Cpu.Input.t) ~read =
-    i.input_ready := Bits.vdd;
-    i.input_byte :=
-      Bits.of_char
-        (match read () with
-        | Some byte -> byte
-        | None -> raise End_of_input_reached)
+  let next_byte ~read =
+    match read () with
+    | Some byte -> Bits.of_char byte
+    | None -> raise End_of_input_reached
 
   let step (sim : Sim.t) ~read ~write =
     let i = Cyclesim.inputs sim in
     let o = Cyclesim.outputs sim ~clock_edge:Before in
-    let supplied = Bits.to_bool !(i.input_ready) in
+    let supplied = Stream_sim.Byte.offered i.input in
     Cyclesim.cycle sim;
-    i.input_ready := Bits.gnd;
-    if Bits.to_bool !(o.input_needed) && not supplied then supply_input i ~read;
-    if Bits.to_bool !(o.output_valid) then write (Bits.to_char !(o.output_byte))
+    Stream_sim.Byte.withdraw i.input;
+    if Bits.to_bool !(o.input.ready) && not supplied then
+      Stream_sim.Byte.offer i.input (next_byte ~read);
+    if Stream_sim.Byte.transferred o.output i.output then
+      write (Bits.to_char !(o.output.data))
 
   let check_limit ~max_cycles cycles =
     if Option.exists (fun limit -> cycles >= limit) max_cycles then
