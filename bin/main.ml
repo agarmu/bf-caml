@@ -71,33 +71,36 @@ let run ~memory ~bank path =
       prerr_endline ("\nend of input\n" ^ Simulation.Stats.to_string stats);
       exit 1
 
-let usage =
-  "usage: bf_caml [--memory ram|rom] [--bank tape|program|all|none] PROGRAM.bf"
+open Cmdliner
+
+let memory =
+  let values = Arg.enum [ ("ram", Ram); ("rom", Rom) ] in
+  Arg.(
+    value & opt values Ram
+    & info [ "memory" ] ~docv:"MEMORY"
+        ~doc:"Use loadable RAM or embed the program in ROM.")
+
+let bank =
+  let values =
+    Arg.enum
+      [ ("none", None); ("tape", Tape); ("program", Program); ("all", All) ]
+  in
+  Arg.(
+    value & opt values None
+    & info [ "bank" ] ~docv:"BANKING" ~doc:"Choose which memories to bank.")
+
+let program =
+  Arg.(
+    required
+    & pos 0 (some string) (None : string option)
+    & info [] ~docv:"PROGRAM.bf" ~doc:"Brainfuck source file.")
+
+let command =
+  let simulate memory bank path = run ~memory ~bank path in
+  Cmd.v
+    (Cmd.info "bf_caml" ~doc:"Simulate Brainfuck hardware.")
+    Term.(const simulate $ memory $ bank $ program)
 
 let () =
   Sys.catch_break true;
-  let memory = ref Ram in
-  let bank = ref None in
-  let paths = ref [] in
-  let choose options target =
-    Arg.Symbol
-      (List.map fst options, fun name -> target := List.assoc name options)
-  in
-  Arg.parse
-    [
-      ( "--memory",
-        choose [ ("ram", Ram); ("rom", Rom) ] memory,
-        " program memory: loaded into ram, or baked into rom (default ram)" );
-      ( "--bank",
-        choose
-          [ ("tape", Tape); ("program", Program); ("all", All); ("none", None) ]
-          bank,
-        " which memories to bank (default none)" );
-    ]
-    (fun path -> paths := path :: !paths)
-    usage;
-  match !paths with
-  | [ path ] -> run ~memory:!memory ~bank:!bank path
-  | _ ->
-      prerr_endline usage;
-      exit 2
+  exit (Cmd.eval command)

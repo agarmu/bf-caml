@@ -1,4 +1,4 @@
 (executable
  (public_name bf_caml)
  (name main)
- (libraries bf_caml hardcaml))
+ (libraries bf_caml hardcaml cmdliner))

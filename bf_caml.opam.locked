@@ -13,6 +13,7 @@ depends: [
   "base_quickcheck" {= "v0.17.1"}
   "bin_prot" {= "v0.17.0-1"}
   "capitalization" {= "v0.17.0"}
+  "cmdliner" {= "2.1.1"}
   "conf-gmp" {= "5"}
   "conf-pkg-config" {= "5"}
   "core" {= "v0.17.2"}

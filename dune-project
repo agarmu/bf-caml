@@ -11,4 +11,5 @@
   (hardcaml_circuits (= v0.17.0))
   (ppx_hardcaml (= v0.17.1))
   (ppx_jane (= v0.17.0))
+  (cmdliner (>= 2.1.0))
   linenoise))
