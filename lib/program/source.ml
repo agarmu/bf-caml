@@ -68,7 +68,7 @@ module Loaded (C : Config.S) (Memory : Memory.S) : S = struct
     pulse ~cycle inputs.finish
 end
 
-module Rom (C : Config.S) : S = struct
+module Rom (C : Config.S) (Memory : Memory.Read_only) : S = struct
   type nonrec t = t
 
   module Input = Interface.Empty
@@ -83,7 +83,7 @@ module Rom (C : Config.S) : S = struct
         finished = of_bool (not too_large);
         too_large = of_bool too_large;
         read =
-          Rom.create ~clock ~reset ~data_bits:Instruction.bits
+          Memory.create ~clock ~reset ~data_bits:Instruction.bits
             ~contents:(List.map Instruction.encode program);
       },
       Output.None )

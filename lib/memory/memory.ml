@@ -16,3 +16,13 @@ module type S = sig
     write_data:Signal.t ->
     output
 end
+
+module type Read_only = sig
+  val create :
+    clock:Signal.t ->
+    reset:Signal.t ->
+    data_bits:int ->
+    contents:Signal.t list ->
+    address:Signal.t ->
+    output
+end

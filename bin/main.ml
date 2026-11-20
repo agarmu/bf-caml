@@ -6,7 +6,7 @@ end)
 module Memory = Bf_caml.Ram_memory
 module Simulation = Bf_caml.Simulation.Make (Config) (Memory)
 module Loaded = Simulation (Bf_caml.Source.Loaded (Config) (Memory))
-module Rom = Simulation (Bf_caml.Source.Rom (Config))
+module Rom = Simulation (Bf_caml.Source.Rom (Config) (Bf_caml.Rom))
 
 let read_source path =
   try In_channel.with_open_bin path In_channel.input_all

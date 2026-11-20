@@ -15,7 +15,9 @@ module Banked =
 module Loaded (M : Memory.S) =
   Simulation.Make (Config) (M) (Source.Loaded (Config) (M))
 
-module Rom (M : Memory.S) = Simulation.Make (Config) (M) (Source.Rom (Config))
+module Rom (M : Memory.S) =
+  Simulation.Make (Config) (M) (Source.Rom (Config) (Rom))
+
 module Simulation = Loaded (Ram_memory)
 
 let memories =
