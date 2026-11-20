@@ -1,39 +1,5 @@
 open Bf_caml
 
-module Config = Config.Make (struct
-  let max_program_size = 32768
-  let tape_length = 32768
-end)
-
-module Eight_lanes = struct
-  let lanes = 8
-end
-
-module Banked = Banked_memory.Make (Ram_memory) (Eight_lanes)
-module Banked_rom = Banked_memory.Make_read_only (Rom) (Eight_lanes)
-
-type memory = Ram | Rom
-type bank = Tape | Program | All | None
-
-let tape_memory bank : (module Memory.S) =
-  match bank with
-  | Tape | All -> (module Banked)
-  | Program | None -> (module Ram_memory)
-
-let program_source memory bank : (module Source.S) =
-  let banked = match bank with Program | All -> true | Tape | None -> false in
-  match (memory, banked) with
-  | Ram, false -> (module Source.Loaded (Config) (Ram_memory))
-  | Ram, true -> (module Source.Loaded (Config) (Banked))
-  | Rom, false -> (module Source.Rom (Config) (Rom))
-  | Rom, true -> (module Source.Rom (Config) (Banked_rom))
-
-let read_source path =
-  try In_channel.with_open_bin path In_channel.input_all
-  with Sys_error message ->
-    prerr_endline message;
-    exit 1
-
 let write byte =
   output_char stdout byte;
   flush stdout
@@ -48,58 +14,151 @@ let read =
         ended := true;
         Some '\004'
 
-let run ~memory ~bank path =
-  let module Tape = (val tape_memory bank) in
-  let module Program = (val program_source memory bank) in
-  let module S = Simulation.Make (Config) (Tape) (Program) in
-  match S.run ~vcd_path:"cell.vcd" ~read ~write (read_source path) with
-  | Ok stats -> prerr_endline (Simulation.Stats.to_string stats)
-  | Error (Simulation.Program_too_large capacity) ->
-      Printf.eprintf "error: program exceeds %d instructions\n%!" capacity;
-      exit 1
-  | Error Unmatched_brackets ->
-      prerr_endline "error: unmatched brackets";
-      exit 1
-  | Error (Interrupted stats) ->
-      prerr_endline ("\ninterrupted\n" ^ Simulation.Stats.to_string stats);
-      exit 130
-  | Error (Cycle_limit stats) ->
-      prerr_endline
-        ("\ncycle limit reached\n" ^ Simulation.Stats.to_string stats);
-      exit 1
-  | Error (End_of_input stats) ->
-      prerr_endline ("\nend of input\n" ^ Simulation.Stats.to_string stats);
-      exit 1
+let fail message =
+  prerr_endline message;
+  exit 1
+
+let stop message stats code =
+  prerr_endline (message ^ "\n" ^ stats);
+  exit code
+
+let too_large capacity =
+  fail (Printf.sprintf "error: program exceeds %d instructions" capacity)
+
+let simulate_direct target source =
+  let format = Simulation.Stats.to_string in
+  match
+    Machine.Direct.simulate target ~vcd_path:"cell.vcd" ~read ~write source
+  with
+  | Ok stats -> prerr_endline (format stats)
+  | Error (Program_too_large capacity) -> too_large capacity
+  | Error Unmatched_brackets -> fail "error: unmatched brackets"
+  | Error (Interrupted stats) -> stop "interrupted" (format stats) 130
+  | Error (Cycle_limit stats) -> stop "cycle limit reached" (format stats) 1
+  | Error (End_of_input stats) -> stop "end of input" (format stats) 1
+
+let simulate_uart target source =
+  let format = Uart_simulation.format_stats in
+  match Uart_simulation.run target ~vcd_path:"cell.vcd" ~read ~write source with
+  | Ok stats -> prerr_endline (format stats)
+  | Error (Program_too_large capacity) -> too_large capacity
+  | Error (Client_error error) ->
+      fail ("error: " ^ Uart_client.error_message error)
+  | Error (Halted_with_error Invalid_brackets) ->
+      fail "error: unmatched brackets"
+  | Error (Halted_with_error Program_too_large) ->
+      too_large Machine.Uart.program_capacity
+  | Error (Halted_with_error (Unknown_halt_reason reason)) ->
+      fail (Printf.sprintf "error: UART halted with reason %d" reason)
+  | Error (Halted_with_error Completed) ->
+      fail "error: unexpected completion event"
+  | Error (Interrupted stats) -> stop "interrupted" (format stats) 130
+  | Error (End_of_input stats) -> stop "end of input" (format stats) 1
+
+let read_source path = In_channel.with_open_bin path In_channel.input_all
+
+let dump_rtl target ~direct ~clocks_per_bit ~output program =
+  let open Hardcaml in
+  let capacity, build =
+    if direct then
+      (Machine.Direct.program_capacity, Machine.Direct.circuit target)
+    else
+      ( Machine.Uart.program_capacity,
+        Machine.Uart.circuit target ~clocks_per_bit )
+  in
+  if List.length program > capacity then too_large capacity;
+  let circuit = build program in
+  if output = "-" then Rtl.print Verilog circuit
+  else Rtl.output ~output_mode:(To_file output) Verilog circuit
+
+let run memory banking direct clocks_per_bit rtl path =
+  let target = { Machine.memory; banking } in
+  let dump output program =
+    dump_rtl target ~direct ~clocks_per_bit ~output program;
+    Ok ()
+  in
+  try
+    match (rtl, path, memory) with
+    | None, Some path, _ ->
+        let simulate = if direct then simulate_direct else simulate_uart in
+        simulate target (read_source path);
+        Ok ()
+    | None, None, _ -> Error "a program file is required"
+    | Some output, _, Machine.Ram -> dump output []
+    | Some output, Some path, Machine.Rom ->
+        dump output (Instruction.parse (read_source path))
+    | Some _, None, Machine.Rom ->
+        Error "ROM RTL dumping requires a program file"
+  with Sys_error message -> fail ("error: " ^ message)
 
 open Cmdliner
 
 let memory =
-  let values = Arg.enum [ ("ram", Ram); ("rom", Rom) ] in
+  let values = Arg.enum [ ("ram", Machine.Ram); ("rom", Machine.Rom) ] in
   Arg.(
-    value & opt values Ram
+    value & opt values Machine.Ram
     & info [ "memory" ] ~docv:"MEMORY"
         ~doc:"Use loadable RAM or embed the program in ROM.")
 
-let bank =
+let banking =
   let values =
     Arg.enum
-      [ ("none", None); ("tape", Tape); ("program", Program); ("all", All) ]
+      [
+        ("none", Machine.Unbanked);
+        ("tape", Machine.Tape);
+        ("program", Machine.Program);
+        ("all", Machine.All);
+      ]
   in
   Arg.(
-    value & opt values None
+    value
+    & opt values Machine.Unbanked
     & info [ "bank" ] ~docv:"BANKING" ~doc:"Choose which memories to bank.")
+
+let direct =
+  Arg.(
+    value & flag
+    & info [ "direct" ]
+        ~doc:"Use the raw CPU interface instead of UART command and control.")
+
+let clocks_per_bit =
+  let parser value =
+    match Arg.Conv.parser Arg.int value with
+    | Ok clocks when clocks >= 4 -> Ok clocks
+    | Ok _ -> Error "UART requires at least four clocks per bit"
+    | Error _ as error -> error
+  in
+  let converter = Arg.Conv.of_conv ~parser Arg.int in
+  Arg.(
+    value
+    & opt converter Machine.Uart.default_clocks_per_bit
+    & info [ "clocks-per-bit" ] ~docv:"N"
+        ~doc:"Number of clocks per UART bit in generated RTL.")
+
+let rtl =
+  Arg.(
+    value
+    & opt (some string) None
+    & info [ "dump-rtl" ] ~docv:"FILE"
+        ~doc:
+          "Emit Verilog to $(docv), or to standard output when $(docv) is \
+           $(b,-).")
 
 let program =
   Arg.(
-    required
-    & pos 0 (some string) (None : string option)
-    & info [] ~docv:"PROGRAM.bf" ~doc:"Brainfuck source file.")
+    value
+    & pos 0 (some string) None
+    & info [] ~docv:"PROGRAM.bf"
+        ~doc:"Brainfuck source file. Required for simulation and ROM RTL.")
 
 let command =
-  let simulate memory bank path = run ~memory ~bank path in
+  let term =
+    Term.(
+      const run $ memory $ banking $ direct $ clocks_per_bit $ rtl $ program)
+  in
   Cmd.v
-    (Cmd.info "bf_caml" ~doc:"Simulate Brainfuck hardware.")
-    Term.(const simulate $ memory $ bank $ program)
+    (Cmd.info "bf_caml" ~doc:"Simulate Brainfuck hardware or generate Verilog.")
+    (Term.cli_parse_result' term)
 
 let () =
   Sys.catch_break true;
