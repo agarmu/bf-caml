@@ -1,3 +1,3 @@
 (library
  (name test_setups)
- (libraries bf_caml))
+ (libraries bf_caml hardcaml))

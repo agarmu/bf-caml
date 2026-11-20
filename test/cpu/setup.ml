@@ -8,6 +8,7 @@ end)
 module Simulation =
   Simulation.Make (Config) (Ram_memory) (Source.Loaded (Config) (Ram_memory))
 
-let setups =
-  let module Setups = Test_setups.Make (Config) in
-  Setups.all
+module Setups = Test_setups.Make (Config)
+
+let setups = Setups.all
+let machines = Setups.machines
