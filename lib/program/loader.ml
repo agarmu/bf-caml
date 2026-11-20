@@ -7,7 +7,7 @@ module State = struct
 end
 
 module Make (C : Config.S) = struct
-  let program_bits = C.program_bits
+  let program_size_bits = C.program_size_bits
   let capacity = C.program_capacity
 
   module Input = struct
@@ -23,7 +23,7 @@ module Make (C : Config.S) = struct
       byte : 'a Stream.Byte.Sink.t; [@rtlprefix "byte_"]
       load : 'a;
       opcode : 'a; [@bits Instruction.bits]
-      program_size : 'a; [@bits program_bits]
+      program_size : 'a; [@bits program_size_bits]
       finished : 'a;
       too_large : 'a;
     }
@@ -33,7 +33,7 @@ module Make (C : Config.S) = struct
   let create ~clock ~reset (inputs : _ Input.t) =
     let spec = Reg_spec.create ~clock ~clear:reset () in
     let state = Always.State_machine.create (module State) spec in
-    let program_size = Always.Variable.reg spec ~width:program_bits in
+    let program_size = Always.Variable.reg spec ~width:program_size_bits in
     let loading = state.is Loading in
     let finished = state.is Finished in
     let opcode = Instruction.decode inputs.byte.data in

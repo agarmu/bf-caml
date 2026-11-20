@@ -7,18 +7,18 @@ end
 
 module Make (C : Config.S) = struct
   let program_bits = C.program_bits
-  let capacity = C.program_capacity
+  let program_size_bits = C.program_size_bits
 
   (* [program_size] is the number of loaded opcodes, from 0 to [capacity].
    [start] begins a run; [step] advances the counter. *)
   module Input = struct
     type 'a t = {
       load : 'a;
-      program_size : 'a; [@bits program_bits]
+      program_size : 'a; [@bits program_size_bits]
       start : 'a;
       step : 'a;
       jump : 'a;
-      jump_address : 'a; [@bits program_bits]
+      jump_address : 'a; [@bits program_size_bits]
     }
     [@@deriving hardcaml]
   end
@@ -40,11 +40,17 @@ module Make (C : Config.S) = struct
     let memory = read ~address:pc.value in
     let advance = inputs.step &: state.is Running &: ~:(inputs.load) in
     (* A jump to [program_size] halts; otherwise the final sequential step halts. *)
-    let last = pc.value ==: inputs.program_size -:. 1 in
+    let last =
+      uresize pc.value program_size_bits ==: inputs.program_size -:. 1
+    in
     let continue =
       mux2 inputs.jump (inputs.jump_address <: inputs.program_size) ~:last
     in
-    let next_pc = mux2 inputs.jump inputs.jump_address (pc.value +:. 1) in
+    let next_pc =
+      mux2 inputs.jump
+        (uresize inputs.jump_address program_bits)
+        (pc.value +:. 1)
+    in
     Always.(
       compile
         [

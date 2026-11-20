@@ -67,12 +67,12 @@ let%expect_test "cycle limit counts execute cycles only" =
     |}]
 
 let%expect_test "errors" =
-  run (String.make 64 '+');
+  run (String.make (Config.program_capacity + 1) '+');
   run "+[";
   run ",";
   [%expect
     {|
-    program too large (capacity 63)
+    program too large (capacity 64)
     unmatched brackets
     end of input after 2 execute cycles
     |}]

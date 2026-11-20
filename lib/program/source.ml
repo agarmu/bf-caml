@@ -46,7 +46,10 @@ module Loaded (C : Config.S) (Memory : Memory.S) : S = struct
     let loader = Loader.create ~clock ~reset inputs in
     let read ~address =
       Memory.create ~address_bits:C.program_bits ~clear:gnd ~clock ~reset
-        ~address:(mux2 loader.load loader.program_size address)
+        ~address:
+          (mux2 loader.load
+             (uresize loader.program_size C.program_bits)
+             address)
         ~write_enable:loader.load ~write_data:loader.opcode
     in
     ( {
@@ -78,7 +81,7 @@ module Rom (C : Config.S) (Memory : Memory.Read_only) : S = struct
     let program = if too_large then [] else program in
     ( {
         load = gnd;
-        program_size = of_int ~width:C.program_bits (List.length program);
+        program_size = of_int ~width:C.program_size_bits (List.length program);
         finished = of_bool (not too_large);
         too_large = of_bool too_large;
         read =

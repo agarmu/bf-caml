@@ -77,13 +77,13 @@ let%expect_test "loads only instruction bytes, in order" =
 let%expect_test "a full program can still finish" =
   let sim = fresh () in
   Printf.printf "loaded %d\n"
-    (String.length (send_all sim (String.make 15 '+')));
+    (String.length (send_all sim (String.make 16 '+')));
   pulse sim "finish";
   status sim;
   [%expect
     {|
-    loaded 15
-    size=15 finished=1 too_large=0 byte_ready=0
+    loaded 16
+    size=16 finished=1 too_large=0 byte_ready=0
     |}]
 
 let%expect_test "an instruction past capacity marks the program too large" =
@@ -95,9 +95,9 @@ let%expect_test "an instruction past capacity marks the program too large" =
   status sim;
   [%expect
     {|
-    loaded 15 of 20
-    size=15 finished=0 too_large=1 byte_ready=1
-    size=15 finished=0 too_large=1 byte_ready=1
+    loaded 16 of 20
+    size=16 finished=0 too_large=1 byte_ready=1
+    size=16 finished=0 too_large=1 byte_ready=1
     |}]
 
 let%expect_test "nothing loads after finishing" =

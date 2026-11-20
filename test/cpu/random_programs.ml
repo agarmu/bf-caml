@@ -112,6 +112,6 @@ let%expect_test "programs over capacity are rejected like the reference" =
            (check ~input:"" (String.make size '+'))))
     [ Config.program_capacity; Config.program_capacity + 1 ];
   [%expect {|
-    63: Halted ""
-    64: Program_too_large ""
+    64: Halted ""
+    65: Program_too_large ""
     |}]

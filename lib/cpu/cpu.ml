@@ -44,7 +44,7 @@ struct
   let fetch ~clock ~reset (source : Source.t) ~step ~jump =
     let start = wire 1 in
     let scan = wire 1 in
-    let jump_address = wire program_bits in
+    let jump_address = wire C.program_size_bits in
     let program =
       Program.create ~clock ~reset ~read:source.read
         {
@@ -68,7 +68,7 @@ struct
     in
     start <== brackets.start;
     scan <== brackets.scan;
-    jump_address <== brackets.match_address +:. 1;
+    jump_address <== uresize brackets.match_address C.program_size_bits +:. 1;
     (program, brackets)
 
   let io_ready (inputs : _ Input.t) opcode =
